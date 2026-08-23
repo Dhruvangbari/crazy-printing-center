@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Receipt
 } from "lucide-react";
+import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
 
 export default function Track() {
   const [orderNumber, setOrderNumber] = useState("");
@@ -147,9 +148,7 @@ export default function Track() {
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                      `🧾 *Crazy Printing Center - Live Order Tracker*\n--------------------------------\n📄 *Order No:* ${order.order_number}\n🖨️ *Print Job:* ${order.paper_size} ${order.color_mode === "COLOR" ? "Color" : "B&W"} (${order.page_count || 1} pgs × ${order.copies} copies)\n💰 *Total:* ₹${order.total}.00\n📊 *Current Status:* ${order.status?.replaceAll("_", " ")}\n--------------------------------\n📍 *Track Live Courier Map & View Bill:* ${typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : ""}`
-                    )}`}
+                    href={buildWhatsAppLink(null, buildOrderStatusMessage(order))}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-whatsapp btn-sm"

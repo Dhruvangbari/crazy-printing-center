@@ -32,6 +32,7 @@ import {
   ShieldAlert,
   Home
 } from "lucide-react";
+import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 
 export default function Detail() {
   const p = useParams();
@@ -254,24 +255,13 @@ export default function Detail() {
   )}`;
 
   const shopPhone = "919876543210";
-  const currentUrl = typeof window !== "undefined" ? window.location.href : `https://crazy-printing-center.vercel.app/orders/${o.id}`;
-
-  const shareWhatsAppBillUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
-    `🧾 *Crazy Printing Center - Print Order & Tax Invoice*\n` +
-    `--------------------------------\n` +
-    `📄 *Order No:* ${o.order_number}\n` +
-    `👤 *Customer:* ${o.customer_name || "Customer"}\n` +
-    `🖨️ *Job:* ${o.paper_size} ${o.color_mode === "COLOR" ? "Full Colour" : "B&W"} (${o.page_count || 1} pages × ${o.copies} copies)\n` +
-    `💰 *Grand Total:* ₹${o.total}.00 (${isPaid ? "PAID & VERIFIED ✅" : "Payment Pending"})\n` +
-    `🚚 *Fulfillment:* ${o.delivery_mode === "DELIVERY" ? `Doorstep Delivery (${o.address || ""})` : "Store Counter Pickup"}\n` +
-    `📊 *Status:* ${o.status?.replaceAll("_", " ")}\n` +
-    `--------------------------------\n` +
-    `📍 *Track Live Status & Digital Bill:* ${currentUrl}`
-  )}`;
-
-  const whatsappShopUrl = `https://api.whatsapp.com/send?phone=${shopPhone}&text=${encodeURIComponent(
+  const billWhatsAppMsg = buildOrderStatusMessage(o, "BILL");
+  const shareWhatsAppBillUrl = buildWhatsAppLink(null, billWhatsAppMsg);
+  const directCustomerWhatsAppUrl = buildWhatsAppLink(o?.customer_phone, billWhatsAppMsg);
+  const whatsappShopUrl = buildWhatsAppLink(
+    shopPhone,
     `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
-  )}`;
+  );
 
   // Rate per page
   const ratePerPage = o.color_mode === "COLOR" ? 5 : 3;
@@ -790,7 +780,7 @@ export default function Detail() {
               </button>
 
               <a
-                href={`https://api.whatsapp.com/send?phone=${(o.customer_phone || "").replace(/[^0-9]/g, "")}&text=${encodeURIComponent(`🧾 Official Bill for Order #BILL-${o.order_number}: Rs.${o.total}.00. Track live at ${window.location.href}`)}`}
+                href={directCustomerWhatsAppUrl || shareWhatsAppBillUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-whatsapp btn-sm"
