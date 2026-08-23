@@ -1,6 +1,7 @@
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import WebNotificationListener from "../components/WebNotificationListener";
 
 export const metadata = {
   title: "Crazy Printing Center — Fast Online Document & Photo Printing",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
         <Navbar />
         {children}
         <Footer />
+        <WebNotificationListener />
       </body>
     </html>
   );

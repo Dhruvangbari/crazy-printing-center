@@ -14,8 +14,12 @@ import {
   LayoutDashboard,
   Home,
   Menu,
-  X
+  X,
+  Bell,
+  BellRing,
+  ExternalLink
 } from "lucide-react";
+import { requestWebNotificationPermission } from "../lib/webNotifications";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -24,6 +28,43 @@ export default function Navbar() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [notifications, setNotifications] = useState([
+    {
+      id: "init-1",
+      title: "Crazy Printing Center",
+      message: "Web alerts are active. Live status notifications appear here.",
+      time: "Live",
+      read: true
+    }
+  ]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const s = supabase();
+    const channel = s
+      .channel("navbar_notifications_channel")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
+        const order = payload.new;
+        if (!order) return;
+        const newNotif = {
+          id: order.id + "-" + Date.now(),
+          orderId: order.id,
+          orderNumber: order.order_number,
+          title: `Order #${order.order_number}`,
+          message: `Status updated to ${order.status?.replaceAll("_", " ")}`,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          read: false
+        };
+        setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
+        setUnreadCount((c) => c + 1);
+      })
+      .subscribe();
+
+    return () => {
+      s.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -134,6 +175,143 @@ export default function Navbar() {
               <span>Admin Panel</span>
             </Link>
           )}
+
+          {/* Live Notification Bell */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => {
+                setShowNotifMenu(!showNotifMenu);
+                setUnreadCount(0);
+              }}
+              className="btn btn-secondary btn-sm"
+              style={{
+                padding: 0,
+                position: "relative",
+                borderRadius: "50%",
+                width: 36,
+                height: 36,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Live Web Notifications"
+            >
+              {unreadCount > 0 ? (
+                <BellRing size={17} color="var(--primary)" />
+              ) : (
+                <Bell size={17} />
+              )}
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -2,
+                    right: -2,
+                    background: "#ef4444",
+                    color: "white",
+                    fontSize: 10,
+                    fontWeight: 900,
+                    borderRadius: 999,
+                    minWidth: 16,
+                    height: 16,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 4px",
+                    boxShadow: "0 0 6px rgba(239,68,68,0.6)",
+                  }}
+                >
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Dropdown Panel */}
+            {showNotifMenu && (
+              <div
+                className="animate-slide-up"
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  right: 0,
+                  marginTop: 10,
+                  width: 320,
+                  background: "white",
+                  borderRadius: 14,
+                  boxShadow: "0 15px 35px rgba(0,0,0,0.15)",
+                  border: "1px solid var(--border)",
+                  zIndex: 1000,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "12px 16px",
+                    background: "#f8fafc",
+                    borderBottom: "1px solid var(--border)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Bell size={14} color="var(--primary)" />
+                    <span>Live Web Alerts</span>
+                  </div>
+                  <button
+                    onClick={() => requestWebNotificationPermission()}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--primary)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Enable Browser Push ↗
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                  {notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: "10px 14px",
+                        borderBottom: "1px solid #f1f5f9",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                        <b style={{ color: "var(--text-main)" }}>{n.title}</b>
+                        <span style={{ fontSize: 10, color: "var(--text-light)" }}>{n.time}</span>
+                      </div>
+                      <div style={{ color: "var(--text-muted)", lineHeight: 1.4 }}>{n.message}</div>
+                      {n.orderId && (
+                        <Link
+                          href={`/orders/${n.orderId}`}
+                          onClick={() => setShowNotifMenu(false)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 3,
+                            fontSize: 11,
+                            color: "var(--primary)",
+                            fontWeight: 700,
+                            marginTop: 4,
+                          }}
+                        >
+                          <span>View Bill & Track</span>
+                          <ExternalLink size={10} />
+                        </Link>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
           {mounted ? (
             user ? (
