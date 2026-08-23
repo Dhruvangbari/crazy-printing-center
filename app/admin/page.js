@@ -30,7 +30,10 @@ import {
   Phone,
   MapPin,
   BookOpen,
-  Zap
+  Zap,
+  Home,
+  Copy,
+  ShieldAlert
 } from "lucide-react";
 
 const STATUS_LIST = [
@@ -265,6 +268,16 @@ export default function AdminDashboard() {
 
   return (
     <main className="wrap">
+      {/* Admin Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+        <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+          <Home size={15} />
+          <span>Home</span>
+        </Link>
+        <span style={{ color: "var(--border)" }}>/</span>
+        <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>Admin Console</span>
+      </div>
+
       {/* Admin Top Header */}
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
         <div>
@@ -626,15 +639,47 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Payment Proof Preview */}
-            <div style={{ marginBottom: 24, padding: 14, border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <IndianRupee size={16} color="var(--success)" />
-                <span>Payment Screenshot Verification</span>
+            {/* Payment Proof & Anti-Fraud UTR Verification */}
+            <div style={{ marginBottom: 24, padding: 16, border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "#fafafa" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <ShieldCheck size={17} color="var(--primary)" />
+                  <span>Anti-Fraud Payment Verification</span>
+                </div>
+                {selectedOrder.upi_utr && (
+                  <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 800 }}>
+                    UTR SUBMITTED
+                  </span>
+                )}
+              </div>
+
+              {/* 12-Digit UTR Display */}
+              <div style={{ background: "white", padding: 12, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                  Customer UPI Ref / 12-Digit UTR
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                  <div style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 800, color: selectedOrder.upi_utr ? "var(--primary)" : "var(--text-light)", letterSpacing: 1 }}>
+                    {selectedOrder.upi_utr || "No UTR provided"}
+                  </div>
+                  {selectedOrder.upi_utr && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedOrder.upi_utr);
+                        alert("Copied UTR: " + selectedOrder.upi_utr + " to clipboard. Paste into your bank/merchant app to verify.");
+                      }}
+                      className="btn btn-secondary btn-sm"
+                      title="Copy UTR to verify in Merchant Bank App"
+                    >
+                      <Copy size={13} />
+                      <span>Copy UTR</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {selectedOrder.payment_proof_path ? (
-                <div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     onClick={async () => {
                       const url = await getDownloadUrl("payment-proofs", selectedOrder.payment_proof_path);
@@ -643,7 +688,20 @@ export default function AdminDashboard() {
                     className="btn btn-secondary btn-sm"
                   >
                     <Eye size={14} />
-                    <span>Inspect Payment Proof</span>
+                    <span>Inspect Screenshot</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (confirm("Flag this payment as FAKE / UNVERIFIED and cancel the order?")) {
+                        handleStatusChange(selectedOrder.id, "CANCELLED");
+                      }
+                    }}
+                    className="btn btn-sm"
+                    style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" }}
+                  >
+                    <ShieldAlert size={14} />
+                    <span>Reject / Fake Screenshot</span>
                   </button>
                 </div>
               ) : (

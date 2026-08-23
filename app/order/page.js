@@ -227,41 +227,80 @@ export default function Order() {
         status: "ORDER_RECEIVED",
       };
 
-      const { data: order, error: orderErr } = await s
-        .from("orders")
-        .insert(orderPayload)
-        .select()
-        .single();
+      // Upload Documents first
+      const uploadedFiles = [];
+      const tempOrderId = "temp-" + Date.now();
 
-      if (orderErr) {
-        setErr("Order creation failed: " + orderErr.message);
-        setLoading(false);
-        return;
-      }
-
-      // Add to status history
-      await s.from("status_history").insert({
-        order_id: order.id,
-        status: "ORDER_RECEIVED",
-        message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${copies} copy(s), ${bindingType} binding.`,
-      });
-
-      // Upload Documents
       for (const f of files) {
         const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${user.id}/${order.id}/${Date.now()}-${cleanName}`;
+        const path = `${user.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
 
         let u = await s.storage.from("documents").upload(path, f);
         if (u.error) {
           console.warn("Storage upload warning:", u.error);
         }
 
-        await s.from("order_files").insert({
-          order_id: order.id,
+        uploadedFiles.push({
           original_name: f.name,
           storage_path: path,
           mime_type: f.type,
-          size: f.size,
+          size: f.size || 0,
+        });
+      }
+
+      // 1. Try atomic ACID procedure
+      let order = null;
+      const { data: atomicOrder, error: atomicErr } = await s.rpc("create_order_atomic", {
+        p_user_id: user.id,
+        p_customer_name: customerName.trim(),
+        p_customer_phone: customerPhone.trim(),
+        p_delivery_mode: deliveryMode,
+        p_address: fullDeliveryAddress,
+        p_city: city.trim() || null,
+        p_pincode: pincode.trim() || null,
+        p_landmark: landmark.trim() || null,
+        p_paper_size: paperSize,
+        p_color_mode: colorMode,
+        p_sides: sides,
+        p_paper_type: paperType,
+        p_copies: Number(copies) || 1,
+        p_binding_type: bindingType,
+        p_priority: priority,
+        p_notes: notes.trim() || null,
+        p_subtotal: printCost,
+        p_total: totalPrice,
+        p_files: uploadedFiles,
+      });
+
+      if (!atomicErr && atomicOrder) {
+        order = atomicOrder;
+      } else {
+        // Fallback to standard insert
+        const { data: fallbackOrder, error: orderErr } = await s
+          .from("orders")
+          .insert(orderPayload)
+          .select()
+          .single();
+
+        if (orderErr) {
+          setErr("Order creation failed: " + orderErr.message);
+          setLoading(false);
+          return;
+        }
+
+        order = fallbackOrder;
+
+        for (const fileMeta of uploadedFiles) {
+          await s.from("order_files").insert({
+            order_id: order.id,
+            ...fileMeta,
+          });
+        }
+
+        await s.from("status_history").insert({
+          order_id: order.id,
+          status: "ORDER_RECEIVED",
+          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${copies} copy(s).`,
         });
       }
 

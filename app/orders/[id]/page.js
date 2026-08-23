@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import FormattedDate from "../../../components/FormattedDate";
+import VirtualDeliveryMap from "../../../components/VirtualDeliveryMap";
 import { 
   FileText, 
   Download, 
@@ -17,7 +18,7 @@ import {
   Printer, 
   Copy, 
   Check, 
-  X,
+  X, 
   AlertCircle,
   MessageCircle,
   Receipt,
@@ -26,7 +27,10 @@ import {
   MapPin,
   BookOpen,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  ShieldCheck,
+  ShieldAlert,
+  Home
 } from "lucide-react";
 
 export default function Detail() {
@@ -34,6 +38,7 @@ export default function Detail() {
   const router = useRouter();
   const [o, setO] = useState(null);
   const [proof, setProof] = useState(null);
+  const [utrNumber, setUtrNumber] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -48,13 +53,26 @@ export default function Detail() {
         .eq("id", p.id)
         .single();
       setO(data);
+      if (data?.upi_utr) {
+        setUtrNumber(data.upi_utr);
+      }
     }
     if (p.id) loadOrder();
   }, [p.id]);
 
   async function handlePaymentProof(e) {
     e.preventDefault();
-    if (!proof) return;
+    if (!proof) {
+      setMsg("Please attach your UPI transaction screenshot.");
+      return;
+    }
+
+    const cleanUtr = utrNumber.trim();
+    if (!cleanUtr || cleanUtr.length < 8) {
+      setMsg("Please enter a valid 12-digit UPI Transaction Ref / UTR number.");
+      return;
+    }
+
     setLoading(true);
     setMsg("");
 
@@ -68,32 +86,42 @@ export default function Detail() {
         console.warn("Storage upload warning:", u.error.message);
       }
 
-      const { error } = await s
-        .from("orders")
-        .update({
-          payment_proof_path: path,
-          status: "PAYMENT_SUBMITTED",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", p.id);
-
-      if (error) {
-        setMsg("Error updating order: " + error.message);
-        setLoading(false);
-        return;
-      }
-
-      // Add to status history
-      await s.from("status_history").insert({
-        order_id: p.id,
-        status: "PAYMENT_SUBMITTED",
-        message: "Payment screenshot submitted by customer. Awaiting shop verification.",
+      // 1. Try atomic ACID payment procedure
+      const { data: atomicResult, error: atomicErr } = await s.rpc("submit_payment_atomic", {
+        p_order_id: p.id,
+        p_utr: cleanUtr,
+        p_payment_proof_path: path,
       });
 
-      setMsg("Payment screenshot uploaded! Verification is in progress.");
+      if (atomicErr) {
+        if (atomicErr.message.includes("Fraud Alert") || atomicErr.message.includes("unique_upi_utr")) {
+          throw new Error("Fraud Alert: This 12-digit transaction UTR was already submitted for another order. Each transaction can only be used once.");
+        }
+
+        // Fallback to standard update
+        const { error: updateErr } = await s
+          .from("orders")
+          .update({
+            upi_utr: cleanUtr,
+            payment_proof_path: path,
+            status: "PAYMENT_SUBMITTED",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", p.id);
+
+        if (updateErr) throw updateErr;
+
+        await s.from("status_history").insert({
+          order_id: p.id,
+          status: "PAYMENT_SUBMITTED",
+          message: `Payment submitted with 12-digit UTR: ${cleanUtr}. Awaiting shop verification.`,
+        });
+      }
+
+      setMsg("Payment submitted with verified UTR! Verification is in progress.");
       setTimeout(() => location.reload(), 1200);
     } catch (err) {
-      setMsg(err.message || "Failed to submit screenshot");
+      setMsg(err.message || "Failed to submit payment proof");
       setLoading(false);
     }
   }
@@ -147,7 +175,7 @@ export default function Detail() {
   ].includes(o.status);
 
   const shopUpi = process.env.NEXT_PUBLIC_UPI_ID || "crazyprinting@upi";
-  const upiPayUrl = `upi://pay?pa=${shopUpi}&pn=CrazyPrintingCenter&am=${o.total}&cu=INR`;
+  const upiPayUrl = `upi://pay?pa=${shopUpi}&pn=CrazyPrintingCenter&am=${o.total}&cu=INR&tn=${encodeURIComponent(`Order ${o.order_number}`)}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
     upiPayUrl
   )}`;
@@ -165,10 +193,17 @@ export default function Detail() {
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
         {/* Navigation & Header */}
         <div className="no-print" style={{ marginBottom: 20 }}>
-          <Link href="/orders" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-muted)", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-            <ArrowLeft size={16} />
-            <span>Back to My Orders</span>
-          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+              <Home size={15} />
+              <span>Home</span>
+            </Link>
+            <span style={{ color: "var(--border)" }}>/</span>
+            <Link href="/orders" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+              <ArrowLeft size={15} />
+              <span>My Orders</span>
+            </Link>
+          </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <div>
@@ -212,6 +247,11 @@ export default function Detail() {
           </div>
         </div>
 
+        {/* Live Virtual Delivery Map & ETA Tracker */}
+        <div className="no-print">
+          <VirtualDeliveryMap order={o} />
+        </div>
+
         {/* Customer & Delivery Card */}
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="row">
@@ -225,11 +265,17 @@ export default function Detail() {
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
                 📞 Contact: {o.customer_phone || "Not specified"}
               </div>
+              {o.upi_utr && (
+                <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700, marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                  <ShieldCheck size={14} />
+                  <span>UTR Ref: {o.upi_utr}</span>
+                </div>
+              )}
             </div>
 
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                Fulfillment & Location
+                Fulfillment & Destination
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
                 {o.delivery_mode === "PICKUP" ? "🏪 Store Counter Pickup" : "🚚 Doorstep Delivery"}
@@ -344,27 +390,27 @@ export default function Detail() {
           </div>
         </div>
 
-        {/* UPI Payment Box (if not yet verified) */}
+        {/* Anti-Fraud UPI Payment Box */}
         {!isPaid && (
           <div className="card no-print" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
-                <CreditCard size={20} color="var(--primary)" />
-                <span>UPI Payment & Screenshot Submission</span>
+                <ShieldCheck size={20} color="var(--primary)" />
+                <span>Anti-Fraud Secure UPI Payment</span>
               </h2>
               <span className="status-badge status-PAYMENT_SUBMITTED">Amount: ₹{o.total}</span>
             </div>
 
-            <div className="row" style={{ alignItems: "center" }}>
+            <div className="row" style={{ alignItems: "flex-start" }}>
               {/* QR Code */}
-              <div style={{ textAlign: "center", padding: 16, background: "#f8fafc", borderRadius: "var(--radius-md)" }}>
+              <div style={{ textAlign: "center", padding: 16, background: "#f8fafc", borderRadius: "var(--radius-md)", flex: "0 0 220px" }}>
                 <img
                   src={qrCodeUrl}
                   alt="UPI QR Code"
                   style={{ width: 160, height: 160, borderRadius: 8, margin: "0 auto 10px", display: "block" }}
                 />
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)", marginBottom: 6 }}>
-                  Scan with GPay, PhonePe, Paytm, or BHIM
+                  Scan & Pay ₹{o.total}
                 </div>
 
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "white", padding: "4px 10px", borderRadius: 999, border: "1px solid var(--border)", fontSize: 12 }}>
@@ -377,19 +423,43 @@ export default function Detail() {
                     {copied ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
                   </button>
                 </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                  Order Ref: <b>{o.order_number}</b>
+                </div>
               </div>
 
-              {/* Upload Screenshot Form */}
-              <div>
-                <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-                  Upload Payment Screenshot
+              {/* Anti-Fraud UTR & Screenshot Verification Form */}
+              <div style={{ flex: 1 }}>
+                <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+                  Submit Transaction Reference & Screenshot
                 </h4>
                 <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.5 }}>
-                  After completing your UPI payment of <b>₹{o.total}</b>, upload the transaction receipt screenshot below to start printing immediately.
+                  To prevent fraudulent submissions and start printing immediately, please enter your authentic <b>12-digit UPI UTR / Transaction Ref ID</b> from your bank or payment app (Google Pay, PhonePe, Paytm, BHIM) along with your screenshot.
                 </p>
 
                 <form onSubmit={handlePaymentProof}>
-                  <div className="field">
+                  <div className="field" style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      12-Digit UPI Transaction ID / UTR Number <span style={{ color: "var(--danger)" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 423456789012"
+                      maxLength={16}
+                      value={utrNumber}
+                      onChange={(e) => setUtrNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                      required
+                      style={{ fontSize: 14, fontFamily: "monospace", letterSpacing: 1 }}
+                    />
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                      Found under transaction details in GPay, PhonePe, Paytm, or BHIM.
+                    </div>
+                  </div>
+
+                  <div className="field" style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 13, fontWeight: 700 }}>
+                      Payment Screenshot Proof <span style={{ color: "var(--danger)" }}>*</span>
+                    </label>
                     <input
                       type="file"
                       accept="image/*"
@@ -400,19 +470,20 @@ export default function Detail() {
 
                   <button
                     type="submit"
-                    disabled={loading || !proof}
+                    disabled={loading || !proof || utrNumber.length < 8}
                     className="btn"
                     style={{ width: "100%" }}
                   >
                     <UploadCloud size={16} />
-                    <span>{loading ? "Uploading Screenshot..." : "Submit Payment Receipt"}</span>
+                    <span>{loading ? "Verifying & Submitting..." : "Submit Verified Payment"}</span>
                   </button>
                 </form>
 
                 {msg && (
-                  <p className={msg.includes("Error") ? "error" : "success"} style={{ marginTop: 12 }}>
-                    {msg}
-                  </p>
+                  <div className={msg.includes("Error") || msg.includes("Fraud") ? "error" : "success"} style={{ marginTop: 12 }}>
+                    {msg.includes("Fraud") && <ShieldAlert size={16} style={{ marginRight: 6 }} />}
+                    <span>{msg}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -485,6 +556,11 @@ export default function Detail() {
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     UPI ID: {shopUpi}
                   </div>
+                  {o.upi_utr && (
+                    <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700 }}>
+                      UTR Ref: {o.upi_utr}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -554,7 +630,7 @@ export default function Detail() {
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <CheckCircle2 size={16} color="var(--success)" />
                   <span style={{ fontWeight: 800, fontSize: 14, color: "var(--success)" }}>
-                    {o.status === "DELIVERED" || isPaid ? "PAID VIA UPI" : "PAYMENT RECORDED"}
+                    {o.status === "DELIVERED" || isPaid ? "PAID VIA UPI" : "PAYMENT SUBMITTED"}
                   </span>
                 </div>
               </div>

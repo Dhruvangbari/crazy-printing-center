@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import FormattedDate from "../../components/FormattedDate";
+import VirtualDeliveryMap from "../../components/VirtualDeliveryMap";
 import { 
   Search, 
   Clock, 
@@ -11,7 +12,9 @@ import {
   Printer, 
   Truck, 
   AlertCircle,
-  FileText
+  FileText,
+  Home,
+  ArrowRight
 } from "lucide-react";
 
 export default function Track() {
@@ -36,7 +39,7 @@ export default function Track() {
         .single();
 
       if (error || !data) {
-        setErrorMsg("No order found with this order number. Please verify the code.");
+        setErrorMsg("No order found with this order number. Please verify your tracking code.");
       } else {
         setOrder(data);
       }
@@ -77,7 +80,17 @@ export default function Track() {
 
   return (
     <main className="wrap">
-      <div style={{ maxWidth: 720, margin: "20px auto" }}>
+      <div style={{ maxWidth: 760, margin: "20px auto" }}>
+        {/* Navigation Breadcrumb */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+          <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+            <Home size={15} />
+            <span>Home</span>
+          </Link>
+          <span style={{ color: "var(--border)" }}>/</span>
+          <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>Track Order</span>
+        </div>
+
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.5 }}>Track Your Order</h1>
           <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
@@ -117,101 +130,106 @@ export default function Track() {
 
         {/* Track Result Details */}
         {order && (
-          <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <h2 style={{ fontSize: 22, fontWeight: 800 }}>{order.order_number}</h2>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-                  Ordered on <FormattedDate date={order.created_at} includeTime={false} />
+          <div>
+            {/* Live Virtual Route Tracker */}
+            <VirtualDeliveryMap order={order} />
+
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <h2 style={{ fontSize: 22, fontWeight: 800 }}>{order.order_number}</h2>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
+                    Ordered on <FormattedDate date={order.created_at} includeTime={false} />
+                  </div>
+                </div>
+
+                <span className={`status-badge status-${order.status}`} style={{ fontSize: 14, padding: "6px 14px" }}>
+                  {order.status?.replaceAll("_", " ")}
+                </span>
+              </div>
+
+              {/* Visual Step Progress Bar */}
+              <div style={{ display: "flex", justifyContent: "space-between", position: "relative", margin: "30px 10px 40px" }}>
+                {/* Progress Line */}
+                <div style={{ position: "absolute", top: 18, left: 20, right: 20, height: 3, background: "#e2e8f0", zIndex: 0 }} />
+
+                {steps.map((s) => {
+                  const isCompleted = getStepStatus(s.key) === "completed";
+                  const Icon = s.icon;
+                  return (
+                    <div
+                      key={s.key}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 6,
+                        position: "relative",
+                        zIndex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          background: isCompleted ? "var(--primary)" : "white",
+                          color: isCompleted ? "white" : "var(--text-light)",
+                          border: `2px solid ${isCompleted ? "var(--primary)" : "var(--border)"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "var(--shadow-sm)",
+                        }}
+                      >
+                        <Icon size={18} />
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: isCompleted ? 700 : 500,
+                          color: isCompleted ? "var(--text-main)" : "var(--text-muted)",
+                        }}
+                      >
+                        {s.label}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quick Specs */}
+              <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "var(--radius-md)", marginBottom: 20, fontSize: 13, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <b>Print Job:</b> {order.paper_size} • {order.color_mode} • {order.sides} • {order.copies} copies
+                </div>
+                <div style={{ fontWeight: 800, color: "var(--primary)" }}>
+                  Total: ₹{order.total} ({order.delivery_mode})
                 </div>
               </div>
 
-              <span className={`status-badge status-${order.status}`} style={{ fontSize: 14, padding: "6px 14px" }}>
-                {order.status?.replaceAll("_", " ")}
-              </span>
-            </div>
-
-            {/* Visual Step Progress Bar */}
-            <div style={{ display: "flex", justifyContent: "space-between", position: "relative", margin: "30px 10px 40px" }}>
-              {/* Progress Line */}
-              <div style={{ position: "absolute", top: 18, left: 20, right: 20, height: 3, background: "#e2e8f0", zIndex: 0 }} />
-
-              {steps.map((s) => {
-                const isCompleted = getStepStatus(s.key) === "completed";
-                const Icon = s.icon;
-                return (
-                  <div
-                    key={s.key}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 6,
-                      position: "relative",
-                      zIndex: 1,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: "50%",
-                        background: isCompleted ? "var(--primary)" : "white",
-                        color: isCompleted ? "white" : "var(--text-light)",
-                        border: `2px solid ${isCompleted ? "var(--primary)" : "var(--border)"}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "var(--shadow-sm)",
-                      }}
-                    >
-                      <Icon size={18} />
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: isCompleted ? 700 : 500,
-                        color: isCompleted ? "var(--text-main)" : "var(--text-muted)",
-                      }}
-                    >
-                      {s.label}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Quick Specs */}
-            <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "var(--radius-md)", marginBottom: 20, fontSize: 13, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-              <div>
-                <b>Print Job:</b> {order.paper_size} • {order.color_mode} • {order.sides} • {order.copies} copies
+              {/* Detailed Timeline */}
+              <div className="card-header" style={{ marginBottom: 12, marginTop: 10 }}>
+                <h3 className="card-title" style={{ fontSize: 16 }}>
+                  <Clock size={16} color="var(--primary)" />
+                  <span>Status Update History</span>
+                </h3>
               </div>
-              <div style={{ fontWeight: 800, color: "var(--primary)" }}>
-                Total: ₹{order.total} ({order.delivery_mode})
-              </div>
-            </div>
 
-            {/* Detailed Timeline */}
-            <div className="card-header" style={{ marginBottom: 12, marginTop: 10 }}>
-              <h3 className="card-title" style={{ fontSize: 16 }}>
-                <Clock size={16} color="var(--primary)" />
-                <span>Status Update History</span>
-              </h3>
-            </div>
-
-            <div className="timeline">
-              {(order.status_history || [])
-                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-                .map((h) => (
-                  <div className="timeline-step" key={h.id}>
-                    <div className="timeline-dot" />
-                    <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
-                    <div className="timeline-time">
-                      <FormattedDate date={h.created_at} />
+              <div className="timeline">
+                {(order.status_history || [])
+                  .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+                  .map((h) => (
+                    <div className="timeline-step" key={h.id}>
+                      <div className="timeline-dot" />
+                      <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
+                      <div className="timeline-time">
+                        <FormattedDate date={h.created_at} />
+                      </div>
+                      {h.message && <div className="timeline-msg">{h.message}</div>}
                     </div>
-                    {h.message && <div className="timeline-msg">{h.message}</div>}
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
           </div>
         )}

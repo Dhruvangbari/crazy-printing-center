@@ -11,7 +11,8 @@ import {
   PlusCircle, 
   Search, 
   FileText, 
-  LayoutDashboard 
+  LayoutDashboard,
+  Home
 } from "lucide-react";
 
 export default function Navbar() {
@@ -83,6 +84,14 @@ export default function Navbar() {
         </Link>
 
         <nav className="nav-links">
+          <Link 
+            href="/" 
+            className={`nav-link ${pathname === "/" ? "active" : ""}`}
+          >
+            <Home size={17} />
+            <span>Home</span>
+          </Link>
+
           <Link 
             href="/order" 
             className={`nav-link ${pathname === "/order" ? "active" : ""}`}
