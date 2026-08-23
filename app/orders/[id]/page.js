@@ -16,7 +16,14 @@ import {
   Printer, 
   Copy, 
   Check,
-  AlertCircle
+  AlertCircle,
+  MessageCircle,
+  Receipt,
+  User,
+  Phone,
+  MapPin,
+  BookOpen,
+  Zap
 } from "lucide-react";
 
 export default function Detail() {
@@ -79,7 +86,7 @@ export default function Detail() {
         message: "Payment screenshot submitted by customer. Awaiting shop verification.",
       });
 
-      setMsg("Payment screenshot uploaded! Host is verifying your payment.");
+      setMsg("Payment screenshot uploaded! Verification is in progress.");
       setTimeout(() => location.reload(), 1200);
     } catch (err) {
       setMsg(err.message || "Failed to submit screenshot");
@@ -112,6 +119,10 @@ export default function Detail() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function handlePrintInvoice() {
+    window.print();
+  }
+
   if (!o) {
     return (
       <main className="wrap">
@@ -137,10 +148,16 @@ export default function Detail() {
     upiPayUrl
   )}`;
 
+  const shopPhone = "919876543210"; // Shop WhatsApp support number
+  const whatsappUrl = `https://wa.me/${shopPhone}?text=${encodeURIComponent(
+    `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
+  )}`;
+
   return (
     <main className="wrap">
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
-        <div style={{ marginBottom: 20 }}>
+        {/* Navigation & Header */}
+        <div className="no-print" style={{ marginBottom: 20 }}>
           <Link href="/orders" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-muted)", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
             <ArrowLeft size={16} />
             <span>Back to My Orders</span>
@@ -148,15 +165,72 @@ export default function Detail() {
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 800 }}>{o.order_number}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <h1 style={{ fontSize: 26, fontWeight: 800 }}>{o.order_number}</h1>
+                {o.priority === "EXPRESS" && (
+                  <span className="status-badge" style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a" }}>
+                    ⚡ EXPRESS PRIORITY
+                  </span>
+                )}
+              </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
                 Placed on {new Date(o.created_at).toLocaleString()}
               </div>
             </div>
 
-            <span className={`status-badge status-${o.status}`} style={{ fontSize: 14, padding: "6px 16px" }}>
-              {o.status?.replaceAll("_", " ")}
-            </span>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button onClick={handlePrintInvoice} className="btn btn-secondary btn-sm">
+                <Receipt size={15} />
+                <span>Print Invoice</span>
+              </button>
+
+              <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn btn-whatsapp btn-sm">
+                <MessageCircle size={15} />
+                <span>WhatsApp Support</span>
+              </a>
+
+              <span className={`status-badge status-${o.status}`} style={{ fontSize: 14, padding: "6px 16px" }}>
+                {o.status?.replaceAll("_", " ")}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Printable Official Invoice Header (Visible only on print) */}
+        <div style={{ display: "none" }} className="print-header">
+          <h2>CRAZY PRINTING CENTER — TAX INVOICE / RECEIPT</h2>
+          <p>Order: {o.order_number} | Date: {new Date(o.created_at).toLocaleDateString()}</p>
+          <hr style={{ margin: "10px 0" }} />
+        </div>
+
+        {/* Customer & Delivery Card */}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="row">
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Customer Information
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, marginTop: 4 }}>
+                {o.customer_name || "Customer"}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
+                📞 Contact: {o.customer_phone || "Not specified"}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                Fulfillment & Location
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
+                {o.delivery_mode === "PICKUP" ? "🏪 Store Counter Pickup" : "🚚 Doorstep Delivery"}
+              </div>
+              {o.address && (
+                <div style={{ fontSize: 13, color: "var(--text-main)", marginTop: 2 }}>
+                  📍 {o.address}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -169,7 +243,7 @@ export default function Detail() {
                 <Layers size={18} color="var(--primary)" />
                 <span>Job Specifications</span>
               </h2>
-              <div style={{ fontSize: 18, fontWeight: 900, color: "var(--primary)" }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "var(--primary)" }}>
                 ₹{o.total}
               </div>
             </div>
@@ -186,7 +260,7 @@ export default function Detail() {
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Sides:</span>
+                <span style={{ color: "var(--text-muted)" }}>Print Sides:</span>
                 <b>{o.sides === "DOUBLE" ? "Double Sided" : "Single Sided"}</b>
               </div>
 
@@ -196,24 +270,23 @@ export default function Detail() {
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Copies:</span>
-                <b>{o.copies}</b>
+                <span style={{ color: "var(--text-muted)" }}>Binding / Finishing:</span>
+                <b>{o.binding_type || "NONE"}</b>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--text-muted)" }}>Delivery Mode:</span>
-                <b>{o.delivery_mode}</b>
+                <span style={{ color: "var(--text-muted)" }}>Copies:</span>
+                <b>{o.copies} copy(s)</b>
               </div>
 
-              {o.address && (
-                <div style={{ marginTop: 6, background: "#f8fafc", padding: 8, borderRadius: 6, fontSize: 12 }}>
-                  <b>Address:</b> {o.address}
-                </div>
-              )}
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "var(--text-muted)" }}>Priority:</span>
+                <b>{o.priority || "STANDARD"}</b>
+              </div>
 
               {o.notes && (
-                <div style={{ marginTop: 2, background: "#f8fafc", padding: 8, borderRadius: 6, fontSize: 12 }}>
-                  <b>Notes:</b> {o.notes}
+                <div style={{ marginTop: 4, background: "#f8fafc", padding: 8, borderRadius: 6, fontSize: 12 }}>
+                  <b>Instructions:</b> {o.notes}
                 </div>
               )}
             </div>
@@ -251,7 +324,7 @@ export default function Detail() {
 
                   <button
                     onClick={() => handleDownload("documents", file.storage_path, file.original_name)}
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-secondary btn-sm no-print"
                   >
                     <Download size={13} />
                     <span>Download</span>
@@ -264,11 +337,11 @@ export default function Detail() {
 
         {/* UPI Payment Box (if not yet verified) */}
         {!isPaid && (
-          <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card no-print" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <CreditCard size={20} color="var(--primary)" />
-                <span>UPI Payment & Proof Submission</span>
+                <span>UPI Payment & Screenshot Submission</span>
               </h2>
               <span className="status-badge status-PAYMENT_SUBMITTED">Amount: ₹{o.total}</span>
             </div>
@@ -282,7 +355,7 @@ export default function Detail() {
                   style={{ width: 160, height: 160, borderRadius: 8, margin: "0 auto 10px", display: "block" }}
                 />
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)", marginBottom: 6 }}>
-                  Scan with Google Pay, PhonePe, Paytm, or BHIM
+                  Scan with GPay, PhonePe, Paytm, or BHIM
                 </div>
 
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "white", padding: "4px 10px", borderRadius: 999, border: "1px solid var(--border)", fontSize: 12 }}>
@@ -338,7 +411,7 @@ export default function Detail() {
         )}
 
         {/* Live Timeline History */}
-        <div className="card">
+        <div className="card no-print">
           <div className="card-header">
             <h2 className="card-title">
               <Clock size={18} color="var(--primary)" />

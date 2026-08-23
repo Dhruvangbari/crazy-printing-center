@@ -22,7 +22,14 @@ import {
   X, 
   ExternalLink,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  MessageCircle,
+  Receipt,
+  User,
+  Phone,
+  MapPin,
+  BookOpen,
+  Zap
 } from "lucide-react";
 
 const STATUS_LIST = [
@@ -52,6 +59,23 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     checkAdminAndFetch();
+
+    // Setup Realtime listener for incoming orders
+    const s = supabase();
+    const channel = s
+      .channel("admin_orders_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          fetchOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      s.removeChannel(channel);
+    };
   }, []);
 
   async function checkAdminAndFetch() {
@@ -123,13 +147,13 @@ export default function AdminDashboard() {
 
       // 2. Add entry to status history
       const defaultMessages = {
-        PAYMENT_VERIFIED: "Payment screenshot verified by shop admin.",
-        PRINTING: "Document sent to printer.",
-        QUALITY_CHECK: "Print quality inspection passed.",
-        READY: "Order is printed and packed. Ready for pickup/delivery.",
+        PAYMENT_VERIFIED: "Payment verified by store admin. Order queued for printing.",
+        PRINTING: "Document sent to production printer.",
+        QUALITY_CHECK: "Print job completed and quality checked.",
+        READY: "Order is packed and ready for pickup / dispatch.",
         OUT_FOR_DELIVERY: "Order dispatched with delivery partner.",
-        DELIVERED: "Order successfully handed over/delivered.",
-        CANCELLED: "Order cancelled by admin.",
+        DELIVERED: "Order successfully delivered / handed over.",
+        CANCELLED: "Order has been cancelled.",
       };
 
       const message = statusMsg.trim() || defaultMessages[newStatus] || `Status updated to ${newStatus}`;
@@ -174,6 +198,19 @@ export default function AdminDashboard() {
     }
   }
 
+  function getCustomerWhatsAppLink(order) {
+    const phone = (order.customer_phone || order.profiles?.phone || "").replace(/[^0-9]/g, "");
+    if (!phone) return null;
+    const cleanPhone = phone.startsWith("91") ? phone : `91${phone}`;
+
+    let msg = `Hello ${order.customer_name || "Customer"}, this is an update regarding your Print Order #${order.order_number} from Crazy Printing Center. Current Status: ${order.status?.replaceAll("_", " ")}. Total: ₹${order.total}.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  function handlePrintJobSheet() {
+    window.print();
+  }
+
   // Filtered orders
   const filteredOrders = orders.filter((o) => {
     const matchesStatus = statusFilter === "ALL" || o.status === statusFilter;
@@ -181,8 +218,9 @@ export default function AdminDashboard() {
     const matchesSearch =
       !search ||
       o.order_number?.toLowerCase().includes(q) ||
+      o.customer_name?.toLowerCase().includes(q) ||
+      o.customer_phone?.toLowerCase().includes(q) ||
       o.profiles?.name?.toLowerCase().includes(q) ||
-      o.profiles?.phone?.toLowerCase().includes(q) ||
       o.address?.toLowerCase().includes(q);
 
     return matchesStatus && matchesSearch;
@@ -211,7 +249,7 @@ export default function AdminDashboard() {
           <AlertTriangle size={48} color="var(--warning)" style={{ margin: "0 auto 16px" }} />
           <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>Admin Access Required</h2>
           <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-            Your account is currently registered as a <b>CUSTOMER</b>. To access the Admin Order Processing Panel, update your role to <b>ADMIN</b> in the Supabase Dashboard:
+            Your account is currently registered as a <b>CUSTOMER</b>. To access the Admin Console, promote your role to <b>ADMIN</b> in Supabase:
           </p>
           <div style={{ background: "#f1f5f9", padding: "12px 16px", borderRadius: 8, textAlign: "left", fontSize: 13, fontFamily: "monospace", marginBottom: 24 }}>
             UPDATE public.profiles SET role = 'ADMIN' WHERE id = 'YOUR-USER-ID';
@@ -227,7 +265,7 @@ export default function AdminDashboard() {
   return (
     <main className="wrap">
       {/* Admin Top Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h1 style={{ fontSize: 26, fontWeight: 800 }}>Admin Order Console</h1>
@@ -237,7 +275,7 @@ export default function AdminDashboard() {
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
-            Process, print, and track all store print orders in real-time
+            Real-time live queue, automated job ticketing, and WhatsApp customer updates
           </p>
         </div>
 
@@ -248,7 +286,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="stats-grid">
+      <div className="stats-grid no-print">
         <div className="stat-card">
           <div className="stat-icon" style={{ background: "var(--primary-light)", color: "var(--primary)" }}>
             <ShoppingBag size={24} />
@@ -275,7 +313,7 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="stat-value">{inProgressCount}</div>
-            <div className="stat-label">In Printing</div>
+            <div className="stat-label">In Production</div>
           </div>
         </div>
 
@@ -285,20 +323,20 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="stat-value">₹{totalRevenue}</div>
-            <div className="stat-label">Total Store Volume</div>
+            <div className="stat-label">Store Revenue</div>
           </div>
         </div>
       </div>
 
       {/* Search & Status Filters */}
-      <div className="card" style={{ marginBottom: 24, padding: "18px 20px" }}>
+      <div className="card no-print" style={{ marginBottom: 24, padding: "18px 20px" }}>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
           {/* Search bar */}
           <div style={{ position: "relative", minWidth: 280, flex: 1 }}>
             <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
             <input
               type="text"
-              placeholder="Search by order #, customer name, phone..."
+              placeholder="Search by order #, recipient name, phone, address..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{
@@ -341,15 +379,16 @@ export default function AdminDashboard() {
       </div>
 
       {/* Orders Table */}
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
         <div className="table-container" style={{ border: "none" }}>
           <table className="table">
             <thead>
               <tr>
                 <th>Order Number</th>
-                <th>Customer</th>
+                <th>Recipient / Customer</th>
                 <th>Print Specifications</th>
-                <th>Amount</th>
+                <th>Fulfillment</th>
+                <th>Total</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -357,58 +396,93 @@ export default function AdminDashboard() {
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
+                  <td colSpan="7" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
                     No orders found matching your criteria.
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((o) => (
-                  <tr key={o.id}>
-                    <td>
-                      <div style={{ fontWeight: 800, color: "var(--text-main)" }}>{o.order_number}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
-                        {new Date(o.created_at).toLocaleString()}
-                      </div>
-                    </td>
+                filteredOrders.map((o) => {
+                  const waLink = getCustomerWhatsAppLink(o);
+                  return (
+                    <tr key={o.id}>
+                      <td>
+                        <div style={{ fontWeight: 800, color: "var(--text-main)" }}>{o.order_number}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
+                          {new Date(o.created_at).toLocaleString()}
+                        </div>
+                        {o.priority === "EXPRESS" && (
+                          <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, marginTop: 4 }}>
+                            ⚡ EXPRESS
+                          </span>
+                        )}
+                      </td>
 
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.profiles?.name || "Customer"}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                        {o.profiles?.phone || "No phone"}
-                      </div>
-                    </td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                          📞 {o.customer_phone || o.profiles?.phone || "No phone"}
+                        </div>
+                        {waLink && (
+                          <a
+                            href={waLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#16a34a", fontWeight: 700, marginTop: 4 }}
+                          >
+                            <MessageCircle size={12} />
+                            <span>WhatsApp</span>
+                          </a>
+                        )}
+                      </td>
 
-                    <td>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>
-                        {o.paper_size} • {o.color_mode} • {o.sides}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                        {o.copies} copies • {o.paper_type} • {o.delivery_mode}
-                      </div>
-                    </td>
+                      <td>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>
+                          {o.paper_size} • {o.color_mode} • {o.sides}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                          {o.copies} copies • {o.paper_type}
+                        </div>
+                        {o.binding_type && o.binding_type !== "NONE" && (
+                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginTop: 2 }}>
+                            📚 {o.binding_type}
+                          </div>
+                        )}
+                      </td>
 
-                    <td style={{ fontWeight: 800, fontSize: 15 }}>
-                      ₹{o.total}
-                    </td>
+                      <td>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>
+                          {o.delivery_mode === "PICKUP" ? "🏪 Store Pickup" : "🚚 Delivery"}
+                        </div>
+                        {o.address && (
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {o.address}
+                          </div>
+                        )}
+                      </td>
 
-                    <td>
-                      <span className={`status-badge status-${o.status}`}>
-                        {o.status?.replaceAll("_", " ")}
-                      </span>
-                    </td>
+                      <td style={{ fontWeight: 900, fontSize: 15 }}>
+                        ₹{o.total}
+                      </td>
 
-                    <td>
-                      <button
-                        onClick={() => setSelectedOrder(o)}
-                        className="btn btn-sm"
-                        style={{ padding: "6px 14px" }}
-                      >
-                        <Eye size={14} />
-                        <span>Process</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      <td>
+                        <span className={`status-badge status-${o.status}`}>
+                          {o.status?.replaceAll("_", " ")}
+                        </span>
+                      </td>
+
+                      <td>
+                        <button
+                          onClick={() => setSelectedOrder(o)}
+                          className="btn btn-sm"
+                          style={{ padding: "6px 14px" }}
+                        >
+                          <Eye size={14} />
+                          <span>Process</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -421,54 +495,91 @@ export default function AdminDashboard() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 800 }}>{selectedOrder.order_number}</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 800 }}>{selectedOrder.order_number}</h2>
+                  {selectedOrder.priority === "EXPRESS" && (
+                    <span className="status-badge" style={{ background: "#fef3c7", color: "#b45309" }}>
+                      ⚡ EXPRESS
+                    </span>
+                  )}
+                </div>
                 <span className={`status-badge status-${selectedOrder.status}`} style={{ marginTop: 6 }}>
                   {selectedOrder.status?.replaceAll("_", " ")}
                 </span>
               </div>
 
-              <button
-                onClick={() => setSelectedOrder(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-light)" }}
-              >
-                <X size={22} />
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={handlePrintJobSheet}
+                  className="btn btn-secondary btn-sm"
+                  title="Print Machine Operator Job Sheet"
+                >
+                  <Printer size={14} />
+                  <span>Job Ticket</span>
+                </button>
+
+                {getCustomerWhatsAppLink(selectedOrder) && (
+                  <a
+                    href={getCustomerWhatsAppLink(selectedOrder)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-whatsapp btn-sm"
+                  >
+                    <MessageCircle size={14} />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-light)", padding: 4 }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
             </div>
 
-            {/* Customer & Print Specs */}
+            {/* Customer & Fulfillment Details */}
             <div className="row" style={{ marginBottom: 20 }}>
               <div style={{ background: "#f8fafc", padding: 14, borderRadius: "var(--radius-md)" }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Customer Details
+                  Recipient & Contact
                 </div>
-                <div style={{ fontWeight: 700, marginTop: 4 }}>{selectedOrder.profiles?.name || "Customer"}</div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Phone: {selectedOrder.profiles?.phone || "N/A"}</div>
+                <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>
+                  {selectedOrder.customer_name || selectedOrder.profiles?.name || "Customer"}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-main)", marginTop: 2 }}>
+                  📞 {selectedOrder.customer_phone || selectedOrder.profiles?.phone || "N/A"}
+                </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-                  Delivery: <b>{selectedOrder.delivery_mode}</b>
+                  Fulfillment: <b>{selectedOrder.delivery_mode === "PICKUP" ? "Store Pickup" : "Doorstep Delivery"}</b>
                 </div>
                 {selectedOrder.address && (
-                  <div style={{ fontSize: 12, color: "var(--text-main)", marginTop: 4, background: "white", padding: 6, borderRadius: 6 }}>
-                    📍 {selectedOrder.address}
+                  <div style={{ fontSize: 12, color: "var(--text-main)", marginTop: 6, background: "white", padding: 8, borderRadius: 6, border: "1px solid var(--border)" }}>
+                    📍 <b>Address:</b> {selectedOrder.address}
                   </div>
                 )}
               </div>
 
               <div style={{ background: "#f8fafc", padding: 14, borderRadius: "var(--radius-md)" }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Print Job Specs
+                  Print Job Specifications
                 </div>
-                <div style={{ fontWeight: 700, marginTop: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>
                   {selectedOrder.paper_size} | {selectedOrder.color_mode}
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   {selectedOrder.sides} sided | {selectedOrder.paper_type} paper
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: "var(--primary)", marginTop: 4 }}>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  Binding: <b>{selectedOrder.binding_type || "NONE"}</b>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: "var(--primary)", marginTop: 4 }}>
                   {selectedOrder.copies} Copies — Total ₹{selectedOrder.total}
                 </div>
                 {selectedOrder.notes && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                    Note: "{selectedOrder.notes}"
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, background: "white", padding: 6, borderRadius: 6 }}>
+                    <b>Note:</b> "{selectedOrder.notes}"
                   </div>
                 )}
               </div>
@@ -518,7 +629,7 @@ export default function AdminDashboard() {
             <div style={{ marginBottom: 24, padding: 14, border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                 <IndianRupee size={16} color="var(--success)" />
-                <span>Payment Screenshot</span>
+                <span>Payment Screenshot Verification</span>
               </div>
 
               {selectedOrder.payment_proof_path ? (
@@ -531,7 +642,7 @@ export default function AdminDashboard() {
                     className="btn btn-secondary btn-sm"
                   >
                     <Eye size={14} />
-                    <span>View Payment Screenshot</span>
+                    <span>Inspect Payment Proof</span>
                   </button>
                 </div>
               ) : (
@@ -544,7 +655,7 @@ export default function AdminDashboard() {
             {/* Status Update Actions */}
             <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-lg)" }}>
               <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "var(--text-main)" }}>
-                Update Order Status & Send Notification
+                Update Order Status & Send Live Notification
               </div>
 
               <div style={{ marginBottom: 12 }}>
