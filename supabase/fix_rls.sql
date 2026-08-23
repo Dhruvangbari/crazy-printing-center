@@ -1,27 +1,31 @@
--- Disable RLS on all tables and storage to guarantee 100% unrestricted access
+-- 1. Disable RLS on all your custom tables (completely bypasses all RLS checks)
 ALTER TABLE public.orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_files DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.status_history DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
-ALTER TABLE storage.objects DISABLE ROW LEVEL SECURITY;
 
--- Grant full database permissions
+-- 2. Grant permissions on public schema
 GRANT ALL ON SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 
-GRANT ALL ON SCHEMA storage TO postgres, anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA storage TO postgres, anon, authenticated, service_role;
-
--- Make sure buckets exist and are public
+-- 3. Make storage buckets public
 INSERT INTO storage.buckets (id, name, public)
 VALUES 
   ('documents', 'documents', true),
   ('payment-proofs', 'payment-proofs', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Sync existing users to profiles
+-- 4. Storage Policies on storage.objects (for uploads & viewing)
+DROP POLICY IF EXISTS "Allow all uploads to documents" ON storage.objects;
+CREATE POLICY "Allow all uploads to documents" ON storage.objects
+FOR ALL TO public USING (bucket_id = 'documents') WITH CHECK (bucket_id = 'documents');
+
+DROP POLICY IF EXISTS "Allow all uploads to payment-proofs" ON storage.objects;
+CREATE POLICY "Allow all uploads to payment-proofs" ON storage.objects
+FOR ALL TO public USING (bucket_id = 'payment-proofs') WITH CHECK (bucket_id = 'payment-proofs');
+
+-- 5. Sync auth users into profiles
 INSERT INTO public.profiles (id, name, phone, role)
 SELECT 
   id, 
