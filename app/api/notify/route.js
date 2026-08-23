@@ -217,6 +217,41 @@ export async function POST(req) {
       }
     }
 
+    // --- 6. Attempt Direct WhatsApp Message Dispatch via Baileys Bot Bridge ---
+    let whatsappBotSent = false;
+    if (formattedPhone) {
+      try {
+        const botPort = process.env.BOT_PORT || 5001;
+        const botRes = await fetch(`http://127.0.0.1:${botPort}/api/send-message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: formattedPhone,
+            message: 
+              `🧾 *PAYMENT VERIFIED & OFFICIAL BILL — DHRUVANG CRAZY PRINTING CENTER*\n` +
+              `------------------------------------\n` +
+              `📄 *Bill Number:* ${invoiceNumber}\n` +
+              `👤 *Customer:* ${customerName || "Valued Customer"}\n` +
+              `💳 *Amount Paid:* Rs.${total}.00 (PAID IN FULL ✅)\n` +
+              `✅ *UPI UTR:* ${upiUtr || "Verified by Cashier"}\n` +
+              `🖨️ *Print Job:* ${paperSize || "A4"} ${colorMode || "B&W"} (${pageCount || 1} pgs × ${copies || 1} copies)\n` +
+              `🚚 *Fulfillment:* ${deliveryMode === "DELIVERY" ? `Doorstep Delivery (${address || ""})` : "Store Counter Pickup"}\n` +
+              `------------------------------------\n` +
+              `📍 *Live Tracking & Official PDF Bill:* ${trackingUrl || "https://crazy-printing-center.vercel.app"}\n` +
+              `📞 Helpline: +91 8857871669\n\n` +
+              `Your document is currently being printed on our high-speed production printer!`
+          }),
+          signal: AbortSignal.timeout(2500)
+        });
+        if (botRes.ok) {
+          whatsappBotSent = true;
+          dispatchLog.push(`WhatsApp message delivered via Baileys Bot to ${formattedPhone}`);
+        }
+      } catch (err) {
+        // Bot is offline or in separate process, graceful fallback
+      }
+    }
+
     // Mailto link for fallback
     const mailtoUrl = `mailto:${targetEmail}?subject=${encodeURIComponent(
       `Official Bill for Order #${invoiceNumber} - Dhruvang Crazy Printing Center`
@@ -230,13 +265,16 @@ export async function POST(req) {
       success: true,
       emailSent,
       smsSent,
+      whatsappBotSent,
       invoiceNumber,
       smsMessage,
       whatsappUrl,
       mailtoUrl,
       targetEmail,
       formattedPhone,
-      message: emailSent 
+      message: whatsappBotSent
+        ? `Invoice and live status sent directly to WhatsApp (${formattedPhone}) and logged!`
+        : emailSent 
         ? `Invoice successfully emailed to ${targetEmail} and SMS logged!` 
         : `Official Invoice generated! Use WhatsApp/Email action buttons for instant delivery.`,
     });
