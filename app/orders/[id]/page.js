@@ -254,7 +254,22 @@ export default function Detail() {
   )}`;
 
   const shopPhone = "919876543210";
-  const whatsappUrl = `https://wa.me/${shopPhone}?text=${encodeURIComponent(
+  const currentUrl = typeof window !== "undefined" ? window.location.href : `https://crazy-printing-center.vercel.app/orders/${o.id}`;
+
+  const shareWhatsAppBillUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+    `🧾 *Crazy Printing Center - Print Order & Tax Invoice*\n` +
+    `--------------------------------\n` +
+    `📄 *Order No:* ${o.order_number}\n` +
+    `👤 *Customer:* ${o.customer_name || "Customer"}\n` +
+    `🖨️ *Job:* ${o.paper_size} ${o.color_mode === "COLOR" ? "Full Colour" : "B&W"} (${o.page_count || 1} pages × ${o.copies} copies)\n` +
+    `💰 *Grand Total:* ₹${o.total}.00 (${isPaid ? "PAID & VERIFIED ✅" : "Payment Pending"})\n` +
+    `🚚 *Fulfillment:* ${o.delivery_mode === "DELIVERY" ? `Doorstep Delivery (${o.address || ""})` : "Store Counter Pickup"}\n` +
+    `📊 *Status:* ${o.status?.replaceAll("_", " ")}\n` +
+    `--------------------------------\n` +
+    `📍 *Track Live Status & Digital Bill:* ${currentUrl}`
+  )}`;
+
+  const whatsappShopUrl = `https://api.whatsapp.com/send?phone=${shopPhone}&text=${encodeURIComponent(
     `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
   )}`;
 
@@ -303,15 +318,21 @@ export default function Detail() {
                 <span>View Customer Bill</span>
               </button>
 
+              <a
+                href={shareWhatsAppBillUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-whatsapp btn-sm"
+                title="Share live order status & bill on WhatsApp"
+              >
+                <MessageCircle size={15} />
+                <span>Share on WhatsApp</span>
+              </a>
+
               <button onClick={handlePrint} className="btn btn-secondary btn-sm">
                 <Printer size={15} />
                 <span>Print Bill</span>
               </button>
-
-              <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn btn-whatsapp btn-sm">
-                <MessageCircle size={15} />
-                <span>WhatsApp</span>
-              </a>
 
               <span className={`status-badge status-${o.status}`} style={{ fontSize: 14, padding: "6px 16px" }}>
                 {o.status?.replaceAll("_", " ")}

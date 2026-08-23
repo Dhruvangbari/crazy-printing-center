@@ -14,7 +14,9 @@ import {
   AlertCircle,
   FileText,
   Home,
-  ArrowRight
+  ArrowRight,
+  MessageCircle,
+  Receipt
 } from "lucide-react";
 
 export default function Track() {
@@ -143,9 +145,24 @@ export default function Track() {
                   </div>
                 </div>
 
-                <span className={`status-badge status-${order.status}`} style={{ fontSize: 14, padding: "6px 14px" }}>
-                  {order.status?.replaceAll("_", " ")}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <a
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                      `🧾 *Crazy Printing Center - Live Order Tracker*\n--------------------------------\n📄 *Order No:* ${order.order_number}\n🖨️ *Print Job:* ${order.paper_size} ${order.color_mode === "COLOR" ? "Color" : "B&W"} (${order.page_count || 1} pgs × ${order.copies} copies)\n💰 *Total:* ₹${order.total}.00\n📊 *Current Status:* ${order.status?.replaceAll("_", " ")}\n--------------------------------\n📍 *Track Live Courier Map & View Bill:* ${typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : ""}`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-whatsapp btn-sm"
+                    title="Share Live Tracking on WhatsApp"
+                  >
+                    <MessageCircle size={14} />
+                    <span>Share on WhatsApp</span>
+                  </a>
+
+                  <span className={`status-badge status-${order.status}`} style={{ fontSize: 14, padding: "6px 14px" }}>
+                    {order.status?.replaceAll("_", " ")}
+                  </span>
+                </div>
               </div>
 
               {/* Visual Step Progress Bar */}
