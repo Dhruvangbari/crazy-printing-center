@@ -78,16 +78,37 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
     }
   }, []);
 
-  async function handleDownloadPdf() {
-    if (!billSheetRef.current) return;
-    setGeneratingPdf(true);
+  const [sharingPdf, setSharingPdf] = useState(false);
+
+  // Generates pixel-perfect, identical A4 PDF Quotation for both Mobile and Desktop
+  async function generateAdvancePdfDoc() {
+    if (!billSheetRef.current) return null;
+    const element = billSheetRef.current;
+
+    // Create an isolated fixed-width A4 sandbox (794px = 210mm at 96 DPI)
+    const clone = element.cloneNode(true);
+    clone.style.width = "794px";
+    clone.style.minWidth = "794px";
+    clone.style.maxWidth = "794px";
+    clone.style.boxSizing = "border-box";
+    clone.style.padding = "32px 36px";
+    clone.style.position = "fixed";
+    clone.style.top = "-99999px";
+    clone.style.left = "-99999px";
+    clone.style.zIndex = "-99999";
+    clone.style.background = "#ffffff";
+    clone.style.color = "#0f172a";
+    clone.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    document.body.appendChild(clone);
+
     try {
-      const element = billSheetRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2.2,
+      const canvas = await html2canvas(clone, {
+        scale: 2.5,
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        width: 794,
+        windowWidth: 794,
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -100,12 +121,69 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
-      pdf.save(`${advanceId}-quotation.pdf`);
+
+      const pdfBlob = pdf.output("blob");
+      const pdfFile = new File([pdfBlob], `${advanceId}-bill.pdf`, { type: "application/pdf" });
+
+      return { pdf, pdfBlob, pdfFile };
+    } finally {
+      if (document.body.contains(clone)) {
+        document.body.removeChild(clone);
+      }
+    }
+  }
+
+  async function handleDownloadPdf() {
+    setGeneratingPdf(true);
+    try {
+      const res = await generateAdvancePdfDoc();
+      if (res?.pdf) {
+        res.pdf.save(`${advanceId}-bill.pdf`);
+      }
     } catch (err) {
       console.error("Advance PDF Error:", err);
       window.print();
     } finally {
       setGeneratingPdf(false);
+    }
+  }
+
+  async function handleSendPdfToWhatsApp() {
+    setSharingPdf(true);
+    try {
+      const res = await generateAdvancePdfDoc();
+      if (!res) throw new Error("Could not create PDF");
+
+      const { pdf, pdfFile } = res;
+
+      // 1. Mobile & Web Share API: Attaches raw PDF file directly into WhatsApp
+      if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          files: [pdfFile],
+          title: `Advance Bill - ${advanceId}`,
+          text: `🧾 Official Advance Bill & Estimate (${advanceId}) from Dhruvang Crazy Printing Center.\n💰 Total: Rs.${grandTotal}.00`,
+        });
+        setSharingPdf(false);
+        return;
+      }
+
+      // 2. Desktop Fallback: Download the PDF to PC and open WhatsApp Web chat
+      pdf.save(`${advanceId}-bill.pdf`);
+      const phone = customerPhone.replace(/[^0-9]/g, "");
+      const msg = getAdvanceWhatsAppMessage();
+      const formatted = phone.startsWith("91") ? phone : phone.length === 10 ? `91${phone}` : phone;
+      const waUrl = formatted ? `https://wa.me/${formatted}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+
+      alert("📥 Advance Bill PDF has been downloaded! You can attach the PDF document into your WhatsApp chat.");
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.error("WhatsApp PDF Share Error:", err);
+        const msg = getAdvanceWhatsAppMessage();
+        openWhatsAppChat(customerPhone, msg);
+      }
+    } finally {
+      setSharingPdf(false);
     }
   }
 
@@ -462,12 +540,25 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={handleSendWhatsApp}
+              onClick={handleSendPdfToWhatsApp}
+              disabled={sharingPdf || generatingPdf}
               className="btn btn-whatsapp"
-              style={{ padding: "12px 20px", fontSize: 14 }}
+              style={{ padding: "12px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 8 }}
             >
-              <MessageCircle size={18} />
-              <span>📲 Send Advance Bill to WhatsApp</span>
+              {sharingPdf ? <Loader2 size={18} className="spin-animation" /> : <MessageCircle size={18} />}
+              <span>{sharingPdf ? "Generating PDF..." : "📲 Send PDF to WhatsApp"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={generatingPdf || sharingPdf}
+              className="btn btn-secondary"
+              style={{ padding: "12px 18px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
+              title="Download standard A4 PDF document"
+            >
+              {generatingPdf ? <Loader2 size={16} className="spin-animation" /> : <Download size={16} />}
+              <span>{generatingPdf ? "Creating PDF..." : "Download PDF Bill"}</span>
             </button>
 
             <button
@@ -478,18 +569,6 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
             >
               {copied ? <Check size={16} color="var(--success)" /> : <Copy size={16} />}
               <span>{copied ? "Copied Quotation!" : "Copy Text"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={generatingPdf}
-              className="btn btn-secondary"
-              style={{ padding: "12px 18px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
-              title="Download PDF document"
-            >
-              {generatingPdf ? <Loader2 size={16} className="spin-animation" /> : <Download size={16} />}
-              <span>{generatingPdf ? "Creating PDF..." : "Download PDF Bill"}</span>
             </button>
 
             <button

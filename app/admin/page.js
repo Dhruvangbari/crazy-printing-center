@@ -975,16 +975,16 @@ export default function AdminDashboard() {
                   <span>📲 Send Live WhatsApp Update ({selectedOrder.status?.replaceAll("_", " ")})</span>
                 </a>
 
-                <a
-                  href={getCustomerWhatsAppLink(selectedOrder, "BILL") || "#"}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModalOrder(selectedOrder)}
                   className="btn btn-sm"
-                  style={{ background: "#0f172a", color: "white", textDecoration: "none" }}
+                  style={{ background: "#0f172a", color: "white" }}
+                  title="Open Official Tax Invoice to send PDF to WhatsApp or download"
                 >
                   <Receipt size={14} />
-                  <span>🧾 WhatsApp Official Bill</span>
-                </a>
+                  <span>🧾 Send PDF Bill to WhatsApp</span>
+                </button>
               </div>
           </div>
         </div>

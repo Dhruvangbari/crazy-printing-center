@@ -406,16 +406,14 @@ export default function Detail() {
                 <span>View Customer Bill</span>
               </button>
 
-              <a
-                href={shareWhatsAppBillUrl}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                onClick={() => setShowBillModal(true)}
                 className="btn btn-whatsapp btn-sm"
-                title="Share live order status & bill on WhatsApp"
+                title="View Tax Invoice and send PDF directly to WhatsApp"
               >
                 <MessageCircle size={15} />
-                <span>Share on WhatsApp</span>
-              </a>
+                <span>Send PDF to WhatsApp 📲</span>
+              </button>
 
               {o.status !== "CANCELLED" && (
                 <button

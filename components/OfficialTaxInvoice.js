@@ -74,18 +74,37 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
   const totalPages = (order.page_count || 1) * (order.copies || 1);
   const invoiceNumber = `BILL-${order.order_number || "CPC"}`;
 
-  // 1-Click Download High-Resolution PDF Invoice
-  async function handleDownloadPdf() {
-    if (!invoiceRef.current) return;
-    setGeneratingPdf(true);
+  const [sharingPdf, setSharingPdf] = useState(false);
+
+  // Generates a pixel-perfect, identical standard A4 Commercial Tax Invoice PDF for both Mobile & Desktop
+  async function generateInvoicePdfDoc() {
+    if (!invoiceRef.current) return null;
+    const element = invoiceRef.current;
+
+    // Create an isolated fixed-width A4 sandbox (794px = 210mm at 96 DPI) so mobile & desktop render identically
+    const clone = element.cloneNode(true);
+    clone.style.width = "794px";
+    clone.style.minWidth = "794px";
+    clone.style.maxWidth = "794px";
+    clone.style.boxSizing = "border-box";
+    clone.style.padding = "36px 40px";
+    clone.style.position = "fixed";
+    clone.style.top = "-99999px";
+    clone.style.left = "-99999px";
+    clone.style.zIndex = "-99999";
+    clone.style.background = "#ffffff";
+    clone.style.color = "#0f172a";
+    clone.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    document.body.appendChild(clone);
 
     try {
-      const element = invoiceRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2.5, // Crisp high-DPI resolution
+      const canvas = await html2canvas(clone, {
+        scale: 2.5, // High-DPI 300 DPI equivalent
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        width: 794,
+        windowWidth: 794,
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -111,13 +130,73 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
         heightLeft -= pageHeight;
       }
 
-      pdf.save(`${invoiceNumber}.pdf`);
+      const pdfBlob = pdf.output("blob");
+      const pdfFile = new File([pdfBlob], `${invoiceNumber}.pdf`, { type: "application/pdf" });
+
+      return { pdf, pdfBlob, pdfFile };
+    } finally {
+      if (document.body.contains(clone)) {
+        document.body.removeChild(clone);
+      }
+    }
+  }
+
+  // 1-Click Download High-Resolution PDF Invoice
+  async function handleDownloadPdf() {
+    setGeneratingPdf(true);
+    try {
+      const res = await generateInvoicePdfDoc();
+      if (res?.pdf) {
+        res.pdf.save(`${invoiceNumber}.pdf`);
+      }
     } catch (err) {
       console.error("PDF Generation Error:", err);
-      // Fallback to browser print
       window.print();
     } finally {
       setGeneratingPdf(false);
+    }
+  }
+
+  // Send Actual PDF File to WhatsApp (Via Web Share API on Mobile/Desktop or Auto-Download + WhatsApp Web on PC)
+  async function handleSendPdfToWhatsApp() {
+    setSharingPdf(true);
+    try {
+      const res = await generateInvoicePdfDoc();
+      if (!res) throw new Error("Could not create PDF");
+
+      const { pdf, pdfFile } = res;
+
+      // 1. Mobile & Modern Browsers: Native Share with PDF File directly into WhatsApp
+      if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          files: [pdfFile],
+          title: `Tax Invoice - ${invoiceNumber}`,
+          text: `🧾 Official PDF Tax Invoice for Order #${order.order_number} from Dhruvang Crazy Printing Center.\n📍 Verify & Track: ${verifyUrl}`,
+        });
+        setSharingPdf(false);
+        return;
+      }
+
+      // 2. Desktop Fallback: Download the PDF immediately and open WhatsApp Web with reference
+      pdf.save(`${invoiceNumber}.pdf`);
+      const phone = order.customer_phone || "";
+      const msg = `🧾 *OFFICIAL TAX INVOICE — DHRUVANG CRAZY PRINTING CENTER*\n\n📄 *Bill No:* ${invoiceNumber}\n👤 *Customer:* ${order.customer_name || "Customer"}\n💰 *Total Paid:* Rs.${order.total}.00 (PAID ✅)\n\n📥 *PDF Document Downloaded.* You can attach the downloaded PDF file or view live online here:\n📍 *Live Verification Portal:* ${verifyUrl}\n\nThank you for choosing Dhruvang Crazy Printing Center!`;
+      
+      const clean = phone.replace(/[^0-9]/g, "");
+      const formatted = clean.startsWith("91") ? clean : clean.length === 10 ? `91${clean}` : clean;
+      const waUrl = formatted ? `https://wa.me/${formatted}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+
+      alert("📥 PDF Bill has been downloaded! You can attach the PDF document into your WhatsApp chat.");
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.error("WhatsApp PDF Share Error:", err);
+        const shareMsg = buildOrderStatusMessage(order, "BILL");
+        const waUrl = buildWhatsAppLink(order.customer_phone, shareMsg);
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      setSharingPdf(false);
     }
   }
 
@@ -132,9 +211,6 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
       setTimeout(() => setCopied(false), 2500);
     }
   }
-
-  const shareMsg = buildOrderStatusMessage(order, "BILL");
-  const whatsAppUrl = buildWhatsAppLink(null, shareMsg);
 
   return (
     <div className="tax-invoice-container" style={{ background: "#ffffff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden", maxWidth: 820, margin: "0 auto", boxShadow: "0 12px 30px rgba(0,0,0,0.08)" }}>
@@ -161,31 +237,37 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
             type="button" 
             onClick={handleCopyVerifyLink} 
             className="btn btn-secondary btn-sm"
-            style={{ fontSize: 12, padding: "6px 12px" }}
+            style={{ fontSize: 12, padding: "7px 12px" }}
           >
             {copied ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
             <span>{copied ? "Copied Link!" : "Copy URL"}</span>
           </button>
 
-          <a 
-            href={whatsAppUrl} 
-            target="_blank" 
-            rel="noreferrer" 
+          {/* Send PDF to WhatsApp Button */}
+          <button 
+            type="button" 
+            onClick={handleSendPdfToWhatsApp} 
+            disabled={sharingPdf || generatingPdf}
             className="btn btn-whatsapp btn-sm"
-            style={{ fontSize: 12, padding: "6px 12px", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
+            style={{ fontSize: 12, padding: "7px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
+            title="Attach & send the actual PDF document on WhatsApp"
           >
-            <MessageCircle size={14} />
-            <span>Share on WhatsApp</span>
-          </a>
+            {sharingPdf ? (
+              <Loader2 size={13} className="spin-animation" />
+            ) : (
+              <MessageCircle size={14} />
+            )}
+            <span>{sharingPdf ? "Preparing PDF..." : "Send PDF to WhatsApp 📲"}</span>
+          </button>
 
           {/* 1-Click PDF Download Button */}
           <button 
             type="button" 
             onClick={handleDownloadPdf} 
-            disabled={generatingPdf}
+            disabled={generatingPdf || sharingPdf}
             className="btn btn-sm"
-            style={{ fontSize: 12, padding: "6px 14px", background: "#4f46e5", color: "white", display: "inline-flex", alignItems: "center", gap: 6 }}
-            title="Download PDF Document directly"
+            style={{ fontSize: 12, padding: "7px 14px", background: "#4f46e5", color: "white", display: "inline-flex", alignItems: "center", gap: 6 }}
+            title="Download standard A4 PDF Document directly"
           >
             {generatingPdf ? (
               <Loader2 size={13} className="spin-animation" />
@@ -199,7 +281,7 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
             type="button" 
             onClick={handlePrint} 
             className="btn btn-secondary btn-sm"
-            style={{ fontSize: 12, padding: "6px 12px" }}
+            style={{ fontSize: 12, padding: "7px 12px" }}
           >
             <Printer size={13} />
             <span>Print</span>
