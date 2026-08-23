@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import FormattedDate from "../../../components/FormattedDate";
 import { 
   FileText, 
   Download, 
@@ -148,7 +149,7 @@ export default function Detail() {
     upiPayUrl
   )}`;
 
-  const shopPhone = "919876543210"; // Shop WhatsApp support number
+  const shopPhone = "919876543210";
   const whatsappUrl = `https://wa.me/${shopPhone}?text=${encodeURIComponent(
     `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
   )}`;
@@ -174,7 +175,7 @@ export default function Detail() {
                 )}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-                Placed on {new Date(o.created_at).toLocaleString()}
+                Placed on <FormattedDate date={o.created_at} />
               </div>
             </div>
 
@@ -194,13 +195,6 @@ export default function Detail() {
               </span>
             </div>
           </div>
-        </div>
-
-        {/* Printable Official Invoice Header (Visible only on print) */}
-        <div style={{ display: "none" }} className="print-header">
-          <h2>CRAZY PRINTING CENTER — TAX INVOICE / RECEIPT</h2>
-          <p>Order: {o.order_number} | Date: {new Date(o.created_at).toLocaleDateString()}</p>
-          <hr style={{ margin: "10px 0" }} />
         </div>
 
         {/* Customer & Delivery Card */}
@@ -427,12 +421,7 @@ export default function Detail() {
                   <div className="timeline-dot" />
                   <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
                   <div className="timeline-time">
-                    {new Date(h.created_at).toLocaleString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    <FormattedDate date={h.created_at} />
                   </div>
                   {h.message && <div className="timeline-msg">{h.message}</div>}
                 </div>

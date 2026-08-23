@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
+import FormattedDate from "../../components/FormattedDate";
 import { 
   ShieldCheck, 
   Search, 
@@ -408,7 +409,7 @@ export default function AdminDashboard() {
                       <td>
                         <div style={{ fontWeight: 800, color: "var(--text-main)" }}>{o.order_number}</div>
                         <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
-                          {new Date(o.created_at).toLocaleString()}
+                          <FormattedDate date={o.created_at} />
                         </div>
                         {o.priority === "EXPRESS" && (
                           <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, marginTop: 4 }}>

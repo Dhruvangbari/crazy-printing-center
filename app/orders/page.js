@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
+import FormattedDate from "../../components/FormattedDate";
 import { 
   FileText, 
   PlusCircle, 
@@ -111,13 +112,7 @@ export default function Orders() {
                     </td>
 
                     <td style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                      {new Date(o.created_at).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      <FormattedDate date={o.created_at} />
                     </td>
 
                     <td>

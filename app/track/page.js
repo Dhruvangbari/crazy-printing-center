@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
+import FormattedDate from "../../components/FormattedDate";
 import { 
   Search, 
   Clock, 
@@ -121,11 +122,7 @@ export default function Track() {
               <div>
                 <h2 style={{ fontSize: 22, fontWeight: 800 }}>{order.order_number}</h2>
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-                  Ordered on {new Date(order.created_at).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
+                  Ordered on <FormattedDate date={order.created_at} includeTime={false} />
                 </div>
               </div>
 
@@ -139,7 +136,7 @@ export default function Track() {
               {/* Progress Line */}
               <div style={{ position: "absolute", top: 18, left: 20, right: 20, height: 3, background: "#e2e8f0", zIndex: 0 }} />
 
-              {steps.map((s, index) => {
+              {steps.map((s) => {
                 const isCompleted = getStepStatus(s.key) === "completed";
                 const Icon = s.icon;
                 return (
@@ -210,7 +207,7 @@ export default function Track() {
                     <div className="timeline-dot" />
                     <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
                     <div className="timeline-time">
-                      {new Date(h.created_at).toLocaleString()}
+                      <FormattedDate date={h.created_at} />
                     </div>
                     {h.message && <div className="timeline-msg">{h.message}</div>}
                   </div>
