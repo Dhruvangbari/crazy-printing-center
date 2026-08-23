@@ -198,10 +198,50 @@ export default function Order() {
     }
   }
 
+  const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".jpg", ".jpeg", ".png", ".webp"];
+
+  function isAllowedPrintDocument(file) {
+    const name = (file.name || "").toLowerCase();
+    const hasAllowedExt = ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
+    
+    // Explicitly block media / audio / video / binary / archive files
+    const blockedExt = [".mp3", ".mp4", ".wav", ".mkv", ".avi", ".mov", ".m4a", ".aac", ".exe", ".zip", ".rar", ".apk", ".tar", ".gz", ".flac", ".ogg", ".webm"];
+    const isBlocked = blockedExt.some((ext) => name.endsWith(ext));
+    
+    if (isBlocked) return false;
+    if (file.type && (file.type.startsWith("audio/") || file.type.startsWith("video/"))) return false;
+    
+    return hasAllowedExt;
+  }
+
   async function addFiles(fileList) {
+    setErr("");
     setDetectingPages(true);
-    const processed = [];
+
+    const rejectedFiles = [];
+    const validFiles = [];
+
     for (const f of fileList) {
+      if (!isAllowedPrintDocument(f)) {
+        rejectedFiles.push(f.name);
+      } else {
+        validFiles.push(f);
+      }
+    }
+
+    if (rejectedFiles.length > 0) {
+      setErr(
+        `Blocked Non-Printable File(s): ${rejectedFiles.join(", ")}. Audio/Video (MP3, MP4) and executable files cannot be printed. Only PDF, Word, PowerPoint, and Image files are accepted.`
+      );
+    }
+
+    if (validFiles.length === 0) {
+      setDetectingPages(false);
+      return;
+    }
+
+    const processed = [];
+    for (const f of validFiles) {
       const detectedPages = await countPdfPages(f);
       processed.push({
         file: f,
@@ -565,7 +605,7 @@ export default function Order() {
                 {detectingPages ? "Analyzing PDF page counts..." : "Click to browse or drag & drop files here"}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                PDF pages are automatically detected and priced per page!
+                PDF, Word (DOCX), PowerPoint, and Images accepted. (Audio/Video MP3/MP4 strictly blocked)
               </div>
             </div>
 
