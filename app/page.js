@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 import { 
   Printer, 
   UploadCloud, 
@@ -17,10 +19,50 @@ import {
 } from "lucide-react";
 
 export default function Home() {
+  const router = useRouter();
   const [calcSize, setCalcSize] = useState("A4");
   const [calcColor, setCalcColor] = useState("BW");
   const [calcSides, setCalcSides] = useState("SINGLE");
   const [calcCopies, setCalcCopies] = useState(1);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      const s = supabase();
+      s.auth.getUser().then(async ({ data: { user } }) => {
+        if (user) {
+          const name =
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            user.email?.split("@")[0] ||
+            "Customer";
+
+          await s.from("profiles").upsert(
+            {
+              id: user.id,
+              name: name,
+              phone: user.user_metadata?.phone || null,
+            },
+            { onConflict: "id" }
+          );
+
+          const { data: prof } = await s
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+
+          if (prof?.role === "ADMIN") {
+            router.push("/admin");
+          } else {
+            router.push("/orders");
+          }
+        }
+      });
+    }
+  }, [router]);
 
   // Quick price estimator
   const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
