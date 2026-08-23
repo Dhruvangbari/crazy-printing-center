@@ -154,9 +154,24 @@ export default function AdminDashboard() {
     setRefreshing(false);
   }
 
-  async function handleStatusChange(orderId, newStatus) {
+  async function handleStatusChange(orderId, newStatus, customMsg = "", allowOverride = false) {
     setUpdating(true);
     try {
+      const targetOrder = (orders || []).find((o) => o.id === orderId) || selectedOrder;
+
+      // Strict guard against invalid backwards transition from DELIVERED or CANCELLED
+      if (targetOrder?.status === "DELIVERED" && newStatus !== "DELIVERED" && !allowOverride) {
+        alert("⚠️ Action Blocked: This order has already been DELIVERED to the customer. Moving backwards to earlier stages (like 'Out for Delivery' or 'Printing') is not allowed.");
+        setUpdating(false);
+        return;
+      }
+
+      if (targetOrder?.status === "CANCELLED" && newStatus !== "CANCELLED" && !allowOverride) {
+        alert("⚠️ This order is currently CANCELLED. Please use 'Restore Order' if you wish to reactivate it.");
+        setUpdating(false);
+        return;
+      }
+
       const s = supabase();
 
       // 1. Update order status
@@ -177,21 +192,20 @@ export default function AdminDashboard() {
         QUALITY_CHECK: "Print job completed and quality checked.",
         READY: "Order is packed and ready for pickup / dispatch.",
         OUT_FOR_DELIVERY: "Order dispatched with delivery partner.",
-        DELIVERED: "Order successfully delivered / handed over.",
+        DELIVERED: "Order successfully delivered / handed over to customer.",
         CANCELLED: "Order has been cancelled.",
       };
 
-      const message = statusMsg.trim() || defaultMessages[newStatus] || `Status updated to ${newStatus}`;
+      const finalMessage = customMsg.trim() || statusMsg.trim() || defaultMessages[newStatus] || `Status updated to ${newStatus}`;
 
       await s.from("status_history").insert({
         order_id: orderId,
         status: newStatus,
-        message: message,
+        message: finalMessage,
       });
 
       // 3. Auto-Dispatch Email & SMS Bill when payment is verified
       if (newStatus === "PAYMENT_VERIFIED") {
-        const targetOrder = (orders || []).find((o) => o.id === orderId) || selectedOrder;
         if (targetOrder) {
           fetch("/api/notify", {
             method: "POST",
@@ -219,6 +233,7 @@ export default function AdminDashboard() {
       setStatusMsg("");
       await fetchOrders();
     } catch (err) {
+      console.error("Status update error:", err);
       alert("Failed to update status: " + err.message);
     } finally {
       setUpdating(false);
@@ -779,87 +794,173 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Status Update Actions */}
-            <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-lg)" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "var(--text-main)" }}>
-                Update Order Status & Send Live Notification
+            {/* Status Update Actions with Forward-Only Lifecycle & Delivery Lock */}
+            {selectedOrder.status === "DELIVERED" ? (
+              <div style={{ background: "#ecfdf5", border: "2px solid #a7f3d0", padding: "16px 20px", borderRadius: "var(--radius-lg)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#10b981", color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 15, color: "#065f46" }}>
+                        Order Fulfilled & Delivered Successfully ✅
+                      </div>
+                      <div style={{ fontSize: 12, color: "#047857", marginTop: 2 }}>
+                        This job is completed. Reverting backwards to "Out for Delivery" or "Printing" is locked to protect order authenticity.
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    disabled={updating}
+                    onClick={() => {
+                      if (confirm("Are you sure you want to REOPEN this completed order? (e.g. for customer reprint/re-delivery)")) {
+                        handleStatusChange(selectedOrder.id, "PRINTING", "Order reopened by Admin for reprinting", true);
+                      }
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: 12, borderColor: "#a7f3d0", color: "#047857" }}
+                    title="Reopen order if customer requested a reprint"
+                  >
+                    <span>Reopen for Reprint ↻</span>
+                  </button>
+                </div>
               </div>
+            ) : selectedOrder.status === "CANCELLED" ? (
+              <div style={{ background: "#fef2f2", border: "2px solid #fecaca", padding: "16px 20px", borderRadius: "var(--radius-lg)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#ef4444", color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <XCircle size={22} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: 15, color: "#991b1b" }}>
+                        Order Cancelled
+                      </div>
+                      <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 2 }}>
+                        This order is cancelled and inactive.
+                      </div>
+                    </div>
+                  </div>
 
-              <div style={{ marginBottom: 12 }}>
-                <input
-                  type="text"
-                  placeholder="Optional custom message (e.g. 'Printed & packed ready for pickup')"
-                  value={statusMsg}
-                  onChange={(e) => setStatusMsg(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    fontSize: 13,
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                  }}
-                />
+                  <button
+                    disabled={updating}
+                    onClick={() => {
+                      if (confirm("Restore this order back to Verified Payment stage?")) {
+                        handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", "Order restored from cancelled by Admin", true);
+                      }
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: 12, borderColor: "#fecaca", color: "#991b1b" }}
+                  >
+                    <span>Restore Order ↻</span>
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "var(--text-main)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Advance Order Status (Current: <b>{selectedOrder.status?.replaceAll("_", " ")}</b>)</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Sequential forward workflow</span>
+                </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED")}
-                  className="btn btn-sm"
-                  style={{ background: "#0284c7" }}
-                >
-                  <CheckCircle2 size={14} />
-                  <span>Verify Payment</span>
-                </button>
+                <div style={{ marginBottom: 12 }}>
+                  <input
+                    type="text"
+                    placeholder="Optional custom message for customer (e.g. 'Printed & packed ready for pickup')"
+                    value={statusMsg}
+                    onChange={(e) => setStatusMsg(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "9px 12px",
+                      fontSize: 13,
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                    }}
+                  />
+                </div>
 
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "PRINTING")}
-                  className="btn btn-sm"
-                  style={{ background: "#7c3aed" }}
-                >
-                  <Printer size={14} />
-                  <span>Start Printing</span>
-                </button>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
+                    <button
+                      disabled={updating}
+                      onClick={() => handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED")}
+                      className="btn btn-sm"
+                      style={{ background: "#0284c7" }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Verify Payment</span>
+                    </button>
+                  )}
 
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "READY")}
-                  className="btn btn-sm"
-                  style={{ background: "#16a34a" }}
-                >
-                  <Check size={14} />
-                  <span>Mark Ready</span>
-                </button>
+                  {["ORDER_RECEIVED", "PAYMENT_SUBMITTED", "PAYMENT_VERIFIED"].includes(selectedOrder.status) && (
+                    <button
+                      disabled={updating}
+                      onClick={() => handleStatusChange(selectedOrder.id, "PRINTING")}
+                      className="btn btn-sm"
+                      style={{ background: "#7c3aed" }}
+                    >
+                      <Printer size={14} />
+                      <span>Start Printing</span>
+                    </button>
+                  )}
 
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "OUT_FOR_DELIVERY")}
-                  className="btn btn-sm"
-                  style={{ background: "#ea580c" }}
-                >
-                  <Truck size={14} />
-                  <span>Out For Delivery</span>
-                </button>
+                  {["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(selectedOrder.status) && (
+                    <button
+                      disabled={updating}
+                      onClick={() => handleStatusChange(selectedOrder.id, "READY")}
+                      className="btn btn-sm"
+                      style={{ background: "#16a34a" }}
+                    >
+                      <Check size={14} />
+                      <span>Mark Ready for Pickup/Dispatch</span>
+                    </button>
+                  )}
 
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "DELIVERED")}
-                  className="btn btn-sm btn-success"
-                >
-                  <CheckCircle2 size={14} />
-                  <span>Mark Delivered</span>
-                </button>
+                  {selectedOrder.status === "READY" && selectedOrder.delivery_mode === "DELIVERY" && (
+                    <button
+                      disabled={updating}
+                      onClick={() => handleStatusChange(selectedOrder.id, "OUT_FOR_DELIVERY")}
+                      className="btn btn-sm"
+                      style={{ background: "#ea580c" }}
+                    >
+                      <Truck size={14} />
+                      <span>Out For Delivery</span>
+                    </button>
+                  )}
 
-                <button
-                  disabled={updating}
-                  onClick={() => handleStatusChange(selectedOrder.id, "CANCELLED")}
-                  className="btn btn-sm btn-danger"
-                >
-                  <XCircle size={14} />
-                  <span>Cancel Order</span>
-                </button>
+                  {["READY", "OUT_FOR_DELIVERY"].includes(selectedOrder.status) && (
+                    <button
+                      disabled={updating}
+                      onClick={() => {
+                        if (confirm(`Confirm order #${selectedOrder.order_number} has been DELIVERED / handed over to ${selectedOrder.customer_name || "customer"}?`)) {
+                          handleStatusChange(selectedOrder.id, "DELIVERED");
+                        }
+                      }}
+                      className="btn btn-sm btn-success"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Mark Delivered & Handed Over ✅</span>
+                    </button>
+                  )}
+
+                  <button
+                    disabled={updating}
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to CANCEL order #${selectedOrder.order_number}?`)) {
+                        handleStatusChange(selectedOrder.id, "CANCELLED");
+                      }
+                    }}
+                    className="btn btn-sm btn-danger"
+                    style={{ marginLeft: "auto" }}
+                  >
+                    <XCircle size={14} />
+                    <span>Cancel Order</span>
+                  </button>
+                </div>
               </div>
+            )}
 
               {/* WhatsApp Live Update & Bill Action Bar */}
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -885,7 +986,6 @@ export default function AdminDashboard() {
                   <span>🧾 WhatsApp Official Bill</span>
                 </a>
               </div>
-            </div>
           </div>
         </div>
       )}
