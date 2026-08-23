@@ -27,6 +27,7 @@ import {
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { buildWhatsAppLink, openWhatsAppChat } from "../lib/whatsapp";
+import { LOGO_BASE64 } from "../lib/logoBase64";
 
 const PAPER_SIZES = [
   { id: "A4", label: "A4 Standard", multiplier: 1 },
@@ -272,14 +273,18 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
     <div style={{ maxWidth: 820, margin: "0 auto" }}>
       {/* Advance Bill Top Banner */}
       <div style={{ background: "linear-gradient(135deg, #1e293b, #0f172a)", color: "white", padding: "18px 24px", borderRadius: "16px 16px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Receipt size={22} color="#38bdf8" />
-            <h2 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>Advance Proforma Bill & Quotation</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <img 
+            src={LOGO_BASE64 || "/logo.png"} 
+            alt="Dhruvang Crazy Printing Logo" 
+            style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "contain", border: "2px solid #38bdf8", flexShrink: 0 }} 
+          />
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: "white" }}>DHRUVANG CRAZY PRINTING CENTER</h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
+              Official Advance Proforma Bill • 📞 Helpline: <a href="tel:8857871669" style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 700 }}>8857871669</a>
+            </p>
           </div>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#94a3b8" }}>
-            Instant price calculation with 1-click WhatsApp dispatch and UPI advance settlement
-          </p>
         </div>
 
         <div style={{ textAlign: "right", fontFamily: "monospace", fontSize: 13, background: "rgba(255,255,255,0.1)", padding: "4px 12px", borderRadius: 8 }}>
@@ -312,7 +317,7 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
               <label>Customer WhatsApp Mobile <span style={{ color: "var(--danger)" }}>*</span></label>
               <input
                 type="tel"
-                placeholder="e.g. 9876543210"
+                placeholder="e.g. 8857871669"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 style={{ fontSize: 14 }}

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import FormattedDate from "./FormattedDate";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../lib/whatsapp";
+import { LOGO_BASE64 } from "../lib/logoBase64";
 
 export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = false }) {
   const [qrSvg, setQrSvg] = useState("");
@@ -294,10 +295,12 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
         {/* Header Grid: Brand Info + Live Scannable Authenticity QR Scanner */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 24, paddingBottom: 24, borderBottom: "2px solid #0f172a" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 10, background: "linear-gradient(135deg, #4f46e5, #7c3aed)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, boxShadow: "0 4px 10px rgba(79, 70, 229, 0.3)", letterSpacing: -0.5 }}>
-                DCP
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
+              <img
+                src={LOGO_BASE64 || "/logo.png"}
+                alt="Dhruvang Crazy Printing Logo"
+                style={{ width: 62, height: 62, borderRadius: "50%", objectFit: "contain", border: "2px solid #0f172a", flexShrink: 0, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
+              />
               <div>
                 <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: "#0f172a", letterSpacing: -0.5 }}>
                   DHRUVANG CRAZY PRINTING CENTER
@@ -310,7 +313,7 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
 
             <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.6, marginTop: 8 }}>
               <div>📍 <b>Center:</b> Main Campus Avenue, Opp. Tech Park, Vercel Central</div>
-              <div>📞 <b>Helpline:</b> +91 9876543210 • ✉️ <b>Email:</b> dhruvangbari2006@gmail.com</div>
+              <div>📞 <b>Helpline:</b> <a href="tel:8857871669" style={{ color: "#4f46e5", textDecoration: "none", fontWeight: 700 }}>+91 8857871669</a> • ✉️ <b>Email:</b> dhruvangbari2006@gmail.com</div>
               <div>🏷️ <b>GST SAC Code:</b> 9989 (Reprographic & Digital Document Printing)</div>
               <div>🌐 <b>Verification Portal:</b> {origin || "https://crazy-printing-center.vercel.app"}</div>
             </div>

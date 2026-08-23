@@ -169,7 +169,7 @@ export default function Register() {
               <label>Phone Number</label>
               <input
                 type="text"
-                placeholder="+91 9876543210"
+                placeholder="+91 8857871669"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />

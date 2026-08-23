@@ -604,7 +604,7 @@ export default function Order() {
                 <label>Contact Phone / WhatsApp *</label>
                 <input
                   type="tel"
-                  placeholder="+91 9876543210"
+                  placeholder="+91 8857871669"
                   value={customerPhone}
                   onChange={(e) => {
                     setCustomerPhone(e.target.value);

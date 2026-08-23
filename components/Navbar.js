@@ -18,7 +18,8 @@ import {
   Bell,
   BellRing,
   ExternalLink,
-  Receipt
+  Receipt,
+  Phone
 } from "lucide-react";
 import { requestWebNotificationPermission } from "../lib/webNotifications";
 
@@ -127,15 +128,27 @@ export default function Navbar() {
   return (
     <header className="navbar">
       <div className="nav-container">
-        <Link href="/" className="brand">
-          <div className="brand-icon">
-            <Printer size={22} />
-          </div>
-          <span>Dhruvang Crazy Printing</span>
+        <Link href="/" className="brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <img 
+            src="/logo.png" 
+            alt="Dhruvang Crazy Printing Logo" 
+            style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: "2px solid #4f46e5", boxShadow: "0 2px 8px rgba(79, 70, 229, 0.3)" }} 
+          />
+          <span style={{ fontWeight: 900, letterSpacing: -0.3 }}>Dhruvang Crazy Printing</span>
         </Link>
 
         {/* Desktop Navigation Links */}
         <nav className="nav-links desktop-nav">
+          <a
+            href="tel:8857871669"
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: 12, padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 5, color: "#0f172a", textDecoration: "none" }}
+            title="Helpline: 8857871669"
+          >
+            <Phone size={13} color="#16a34a" />
+            <span>8857871669</span>
+          </a>
+
           <Link 
             href="/" 
             className={`nav-link ${pathname === "/" ? "active" : ""}`}

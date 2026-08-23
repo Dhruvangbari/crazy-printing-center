@@ -240,7 +240,7 @@ export default function ProfilePage() {
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 9876543210"
+                  placeholder="+91 8857871669"
                 />
               </div>
             </div>

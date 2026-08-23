@@ -342,13 +342,13 @@ export default function Detail() {
     upiPayUrl
   )}`;
 
-  const shopPhone = "919876543210";
+  const shopPhone = "918857871669";
   const billWhatsAppMsg = buildOrderStatusMessage(o, "BILL");
   const shareWhatsAppBillUrl = buildWhatsAppLink(null, billWhatsAppMsg);
   const directCustomerWhatsAppUrl = buildWhatsAppLink(o?.customer_phone, billWhatsAppMsg);
   const whatsappShopUrl = buildWhatsAppLink(
     shopPhone,
-    `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
+    `Hello Dhruvang Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
   );
 
   // Rate per page
@@ -763,14 +763,14 @@ export default function Detail() {
 
                 <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
                   <a
-                    href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi, I need assistance cancelling Order #${o.order_number}. Current status: ${o.status}`)}`}
+                    href={`https://wa.me/918857871669?text=${encodeURIComponent(`Hi, I need assistance cancelling Order #${o.order_number}. Current status: ${o.status}`)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-whatsapp btn-sm"
                     style={{ textDecoration: "none", flex: 1, justifyContent: "center" }}
                   >
                     <MessageCircle size={14} />
-                    <span>Contact WhatsApp Support</span>
+                    <span>Contact WhatsApp Support (8857871669)</span>
                   </a>
                   <button
                     type="button"

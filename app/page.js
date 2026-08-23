@@ -231,7 +231,7 @@ export default function Home() {
                   <label style={{ fontSize: 12 }}>WhatsApp Mobile Number <span style={{ color: "var(--danger)" }}>*</span></label>
                   <input
                     type="tel"
-                    placeholder="e.g. 9876543210"
+                    placeholder="e.g. 8857871669"
                     value={estPhone}
                     onChange={(e) => setEstPhone(e.target.value)}
                     style={{ fontSize: 13, padding: "8px 10px" }}
