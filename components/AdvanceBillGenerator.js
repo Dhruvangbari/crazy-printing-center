@@ -139,7 +139,7 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center.vercel.app";
 
     return (
-      `🧾 *CRAZY PRINTING CENTER - OFFICIAL ADVANCE BILL & ESTIMATE*\n` +
+      `🧾 *DHRUVANG CRAZY PRINTING CENTER - ADVANCE BILL & ESTIMATE*\n` +
       `--------------------------------\n` +
       `📄 *Bill Quotation Ref:* ${advanceId}\n` +
       `👤 *Customer Name:* ${customer}\n` +
@@ -164,7 +164,7 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
       `--------------------------------\n` +
       `📲 *PAY ONLINE VIA UPI:* ${shopUpi}\n` +
       `📍 *Upload Your File & Confirm Job:* ${origin}/order\n\n` +
-      `Thank you for choosing Crazy Printing Center!`
+      `Thank you for choosing Dhruvang Crazy Printing Center!`
     );
   }
 

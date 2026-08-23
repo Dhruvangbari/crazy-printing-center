@@ -213,12 +213,12 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
         <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 24, paddingBottom: 24, borderBottom: "2px solid #0f172a" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: "linear-gradient(135deg, #4f46e5, #7c3aed)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 20, boxShadow: "0 4px 10px rgba(79, 70, 229, 0.3)" }}>
-                CP
+              <div style={{ width: 48, height: 48, borderRadius: 10, background: "linear-gradient(135deg, #4f46e5, #7c3aed)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, boxShadow: "0 4px 10px rgba(79, 70, 229, 0.3)", letterSpacing: -0.5 }}>
+                DCP
               </div>
               <div>
-                <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, color: "#0f172a", letterSpacing: -0.5 }}>
-                  CRAZY PRINTING CENTER
+                <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: "#0f172a", letterSpacing: -0.5 }}>
+                  DHRUVANG CRAZY PRINTING CENTER
                 </h1>
                 <div style={{ fontSize: 13, color: "#64748b", fontWeight: 700 }}>
                   High-Speed Commercial Digital Printing & Documentation Services
@@ -449,10 +449,10 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
         {/* Official Footer */}
         <div style={{ marginTop: 20, textAlign: "center", fontSize: 11, color: "#94a3b8" }}>
           <div style={{ fontWeight: 700, color: "#64748b" }}>
-            © 2026 Crazy Printing Center. All rights reserved. • Computer Generated Official Tax Invoice
+            © 2026 Dhruvang Crazy Printing Center. All rights reserved. • Computer Generated Official Tax Invoice
           </div>
           <div style={{ marginTop: 2 }}>
-            Developer & Owner: <b>Dhruvang Bari</b> • Official Scannable Authenticity Record
+            Founder & Owner: <b>Dhruvang Bari</b> • Official Scannable Authenticity Record
           </div>
         </div>
       </div>

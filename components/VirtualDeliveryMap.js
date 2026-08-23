@@ -209,8 +209,8 @@ export default function VirtualDeliveryMap({ order }) {
           >
             <Store size={20} />
           </div>
-          <div style={{ color: "white", fontSize: 12, fontWeight: 700, marginTop: 6, textShadow: "0 1px 4px black" }}>
-            Crazy Printing HQ
+          <div style={{ color: "white", fontSize: 12, fontWeight: 700, marginTop: 6, textShadow: "0 1px 4px black", whiteSpace: "nowrap" }}>
+            Dhruvang Crazy Printing
           </div>
           <div style={{ color: "#94a3b8", fontSize: 10 }}>Origin Hub</div>
         </div>
@@ -311,7 +311,7 @@ export default function VirtualDeliveryMap({ order }) {
               {isDelivery ? "Delivery Address" : "Pickup Location"}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {order.address || (isDelivery ? "Customer Address" : "Crazy Printing Center, Main Counter")}
+              {order.address || (isDelivery ? "Customer Address" : "Dhruvang Crazy Printing Center, Main Counter")}
             </div>
           </div>
         </div>

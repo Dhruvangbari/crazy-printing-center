@@ -67,7 +67,7 @@ export default function VerifyBillPage() {
           <div style={{ fontSize: 40, marginBottom: 12 }}>🛡️</div>
           <h2 style={{ fontSize: 20, fontWeight: 800 }}>Verifying Official Invoice Authenticity...</h2>
           <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
-            Connecting to Crazy Printing Center secure database ledger
+            Connecting to Dhruvang Crazy Printing Center secure ledger
           </p>
         </div>
       </main>
@@ -86,7 +86,7 @@ export default function VerifyBillPage() {
           <div style={{ marginTop: 24 }}>
             <Link href="/" className="btn btn-sm">
               <Home size={14} />
-              <span>Back to Crazy Printing Center</span>
+              <span>Back to Dhruvang Crazy Printing Center</span>
             </Link>
           </div>
         </div>

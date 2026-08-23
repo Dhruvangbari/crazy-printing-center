@@ -33,7 +33,7 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState([
     {
       id: "init-1",
-      title: "Crazy Printing Center",
+      title: "Dhruvang Crazy Printing",
       message: "Web alerts are active. Live status notifications appear here.",
       time: "Live",
       read: true
@@ -131,7 +131,7 @@ export default function Navbar() {
           <div className="brand-icon">
             <Printer size={22} />
           </div>
-          <span>Crazy Printing</span>
+          <span>Dhruvang Crazy Printing</span>
         </Link>
 
         {/* Desktop Navigation Links */}

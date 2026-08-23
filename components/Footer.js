@@ -10,7 +10,7 @@ export default function Footer() {
             <Printer size={18} />
           </div>
           <div>
-            <div style={{ fontWeight: 800, color: "white" }}>Crazy Printing Center</div>
+            <div style={{ fontWeight: 800, color: "white" }}>Dhruvang Crazy Printing Center</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Instant online printing & door delivery</div>
           </div>
         </div>
@@ -18,6 +18,7 @@ export default function Footer() {
         <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", fontSize: 13 }}>
           <Link href="/" style={{ color: "#94a3b8" }}>Home</Link>
           <Link href="/order" style={{ color: "#94a3b8" }}>New Order</Link>
+          <Link href="/bills" style={{ color: "#94a3b8" }}>Bill Center</Link>
           <Link href="/track" style={{ color: "#94a3b8" }}>Track Order</Link>
           <Link href="/login" style={{ color: "#94a3b8" }}>Customer Login</Link>
           <Link href="/admin" style={{ color: "#94a3b8" }}>Admin Portal</Link>
@@ -25,11 +26,11 @@ export default function Footer() {
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
           <div style={{ fontSize: 12, color: "#94a3b8" }}>
-            © 2026 Crazy Printing Center. All rights reserved.
+            © 2026 Dhruvang Crazy Printing Center. All rights reserved.
           </div>
           <div style={{ fontSize: 12, color: "#cbd5e1", display: "flex", alignItems: "center", gap: 5 }}>
             <Code2 size={13} color="#38bdf8" />
-            <span>Designed & Developed by <b style={{ color: "#38bdf8" }}>Dhruvang Bari</b></span>
+            <span>Founder & Developer: <b style={{ color: "#38bdf8" }}>Dhruvang Bari</b></span>
           </div>
         </div>
       </div>

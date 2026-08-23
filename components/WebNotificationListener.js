@@ -77,7 +77,7 @@ export default function WebNotificationListener() {
           // Trigger sound and native OS push
           playChime(type);
           showWebPushNotification({
-            title: `Crazy Printing: ${title}`,
+            title: `Dhruvang Crazy Printing: ${title}`,
             body: message,
             url: `/orders/${updated.id}`,
           });
@@ -107,7 +107,7 @@ export default function WebNotificationListener() {
 
           playChime("alert");
           showWebPushNotification({
-            title: "Crazy Printing: New Order Placed 📄",
+            title: "Dhruvang Crazy Printing: New Order Placed 📄",
             body: `Order #${newOrder.order_number} (₹${newOrder.total}) received.`,
             url: `/orders/${newOrder.id}`,
           });

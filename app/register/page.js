@@ -100,7 +100,7 @@ export default function Register() {
         <div className="auth-card">
           <div className="auth-header">
             <h1 className="auth-title">Create Account</h1>
-            <p className="auth-subtitle">Join Crazy Printing Center for quick & easy printing</p>
+            <p className="auth-subtitle">Join Dhruvang Crazy Printing Center for quick & easy printing</p>
           </div>
 
           {msg && (

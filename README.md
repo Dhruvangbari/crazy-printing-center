@@ -1,4 +1,4 @@
-# Crazy Printing Center — Vercel + Supabase
+# DHRUVANG CRAZY PRINTING CENTER — Vercel + Supabase
 1. Create a Supabase project.
 2. Run `supabase/schema.sql` in Supabase SQL Editor.
 3. Create private Storage buckets: `documents` and `payment-proofs`.

@@ -4,8 +4,8 @@ import Footer from "../components/Footer";
 import WebNotificationListener from "../components/WebNotificationListener";
 
 export const metadata = {
-  title: "Crazy Printing Center — Fast Online Document & Photo Printing",
-  description: "Upload your documents, choose print options, pay seamlessly via UPI, and track printing and delivery in real-time.",
+  title: "DHRUVANG CRAZY PRINTING CENTER — Fast Online Document & Xerox Printing",
+  description: "Upload your documents, customize print options, pay seamlessly via UPI, and track printing and delivery in real-time with Dhruvang Crazy Printing Center.",
 };
 
 export default function RootLayout({ children }) {

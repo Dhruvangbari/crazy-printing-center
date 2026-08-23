@@ -28,14 +28,14 @@ export async function POST(req) {
     const targetEmail = customerEmail || "dhruvangbari2006@gmail.com";
 
     // 1. Plaintext SMS Message
-    const smsMessage = `Dear ${customerName || "Customer"}, your payment of Rs.${total} for Order #${orderNumber} (UTR: ${upiUtr || "VERIFIED"}) has been VERIFIED by Crazy Printing Center! Your print job is now printing. Track live: ${trackingUrl || "https://crazy-printing-center.vercel.app/track"}`;
+    const smsMessage = `Dear ${customerName || "Customer"}, your payment of Rs.${total} for Order #${orderNumber} (UTR: ${upiUtr || "VERIFIED"}) has been VERIFIED by Dhruvang Crazy Printing Center! Your print job is now printing. Track live: ${trackingUrl || "https://crazy-printing-center.vercel.app/track"}`;
 
     // 2. WhatsApp Direct Link
     const cleanPhone = (customerPhone || "").replace(/[^0-9]/g, "");
     const formattedPhone = cleanPhone.startsWith("91") ? cleanPhone : cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(
       `🧾 *OFFICIAL BILL & PAYMENT RECEIPT*\n` +
-      `*Crazy Printing Center*\n` +
+      `*Dhruvang Crazy Printing Center*\n` +
       `--------------------------------\n` +
       `📄 *Invoice No:* ${invoiceNumber}\n` +
       `👤 *Customer:* ${customerName}\n` +
@@ -47,7 +47,7 @@ export async function POST(req) {
       `🚚 *Mode:* ${deliveryMode === "DELIVERY" ? "Doorstep Delivery" : "Store Counter Pickup"}\n` +
       `--------------------------------\n` +
       `📍 *Track Live Status:* ${trackingUrl}\n` +
-      `Thank you for printing with Crazy Printing Center!`
+      `Thank you for printing with Dhruvang Crazy Printing Center!`
     )}`;
 
     // 3. Formatted HTML Email Invoice
@@ -74,7 +74,7 @@ export async function POST(req) {
       <body>
         <div class="card">
           <div class="header">
-            <h1 style="margin: 0; font-size: 26px; font-weight: 900;">Crazy Printing Center</h1>
+            <h1 style="margin: 0; font-size: 26px; font-weight: 900;">Dhruvang Crazy Printing Center</h1>
             <p style="margin: 6px 0 0; opacity: 0.9; font-size: 14px;">Official Tax Invoice & Payment Receipt</p>
             <div class="badge">PAID & VERIFIED ✅</div>
           </div>
@@ -136,8 +136,8 @@ export async function POST(req) {
           </div>
 
           <div class="footer">
-            <p style="margin: 0 0 6px;">© 2026 Crazy Printing Center. All rights reserved.</p>
-            <p style="margin: 0; color: #64748b;">Designed & Developed by <b>Dhruvang Bari</b></p>
+            <p style="margin: 0 0 6px;">© 2026 Dhruvang Crazy Printing Center. All rights reserved.</p>
+            <p style="margin: 0; color: #64748b;">Founder & Developer: <b>Dhruvang Bari</b></p>
           </div>
         </div>
       </body>
@@ -157,9 +157,9 @@ export async function POST(req) {
       try {
         const resend = new Resend(resendKey);
         await resend.emails.send({
-          from: "Crazy Printing Center <orders@crazyprinting.in>",
+          from: "Dhruvang Crazy Printing Center <orders@crazyprinting.in>",
           to: targetEmail,
-          subject: `Invoice #${invoiceNumber} — Payment Verified (Crazy Printing Center)`,
+          subject: `Invoice #${invoiceNumber} — Payment Verified (Dhruvang Crazy Printing Center)`,
           html: htmlEmail,
         });
         emailSent = true;
@@ -178,7 +178,7 @@ export async function POST(req) {
         });
 
         await transporter.sendMail({
-          from: `"Crazy Printing Center" <${smtpUser}>`,
+          from: `"Dhruvang Crazy Printing Center" <${smtpUser}>`,
           to: targetEmail,
           subject: `Invoice #${invoiceNumber} — Payment Verified (₹${total}.00)`,
           html: htmlEmail,
@@ -219,9 +219,9 @@ export async function POST(req) {
 
     // Mailto link for fallback
     const mailtoUrl = `mailto:${targetEmail}?subject=${encodeURIComponent(
-      `Official Bill for Order #${invoiceNumber} - Crazy Printing Center`
+      `Official Bill for Order #${invoiceNumber} - Dhruvang Crazy Printing Center`
     )}&body=${encodeURIComponent(
-      `Dear ${customerName},\n\nYour payment of Rs.${total}.00 for Order #${orderNumber} (UTR: ${upiUtr || "VERIFIED"}) has been verified!\n\nInvoice No: ${invoiceNumber}\nJob: ${paperSize} ${colorMode} (${pageCount} pages x ${copies} copies)\nTotal Paid: Rs.${total}.00\n\nTrack your order live: ${trackingUrl}\n\nCrazy Printing Center\nDesigned & Developed by Dhruvang Bari`
+      `Dear ${customerName},\n\nYour payment of Rs.${total}.00 for Order #${orderNumber} (UTR: ${upiUtr || "VERIFIED"}) has been verified!\n\nInvoice No: ${invoiceNumber}\nJob: ${paperSize} ${colorMode} (${pageCount} pages x ${copies} copies)\nTotal Paid: Rs.${total}.00\n\nTrack your order live: ${trackingUrl}\n\nDhruvang Crazy Printing Center\nFounder & Developer: Dhruvang Bari`
     )}`;
 
     console.log(`[Notification Engine] Order #${orderNumber} processed. Email sent: ${emailSent}, SMS sent: ${smsSent}. Log: ${dispatchLog.join(", ")}`);

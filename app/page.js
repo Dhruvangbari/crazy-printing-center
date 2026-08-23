@@ -52,7 +52,7 @@ export default function Home() {
     const totalPgs = calcPages * calcCopies;
     const quotNum = `ADV-CPC-${Date.now().toString().slice(-6)}`;
     const msg = 
-      `🧾 *CRAZY PRINTING CENTER - ADVANCE BILL & ESTIMATE*\n` +
+      `🧾 *DHRUVANG CRAZY PRINTING CENTER - ADVANCE BILL & ESTIMATE*\n` +
       `--------------------------------\n` +
       `📄 *Quotation Ref:* ${quotNum}\n` +
       `👤 *Customer Name:* ${customer}\n` +
@@ -63,7 +63,7 @@ export default function Home() {
       `💳 *UPI Payment ID:* crazyprinting@upi\n` +
       `--------------------------------\n` +
       `📍 *Upload Your Files & Place Order:* ${typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center.vercel.app"}/order\n\n` +
-      `Crazy Printing Center • Fast Online Printing Service`;
+      `Dhruvang Crazy Printing Center • Fast Online Printing Service`;
 
     openWhatsAppChat(estPhone, msg);
   }
@@ -270,7 +270,7 @@ export default function Home() {
 
         {/* Why Choose Us */}
         <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 16 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800 }}>Why Crazy Printing Center?</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800 }}>Why Dhruvang Crazy Printing Center?</h2>
 
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
             <CheckCircle size={20} color="var(--success)" style={{ flexShrink: 0, marginTop: 2 }} />
