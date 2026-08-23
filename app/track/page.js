@@ -199,12 +199,18 @@ export default function Track() {
               </div>
 
               {/* Quick Specs */}
-              <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "var(--radius-md)", marginBottom: 20, fontSize: 13, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "var(--radius-md)", marginBottom: 20, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div>
-                  <b>Print Job:</b> {order.paper_size} • {order.color_mode} • {order.sides} • {order.copies} copies
+                  <b>Print Job:</b> {order.paper_size} • {order.color_mode} • {order.page_count || 1} pgs • {order.copies} copy(s)
                 </div>
-                <div style={{ fontWeight: 800, color: "var(--primary)" }}>
-                  Total: ₹{order.total} ({order.delivery_mode})
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontWeight: 800, color: "var(--primary)" }}>
+                    Total: ₹{order.total} ({order.delivery_mode === "PICKUP" ? "Counter Pickup" : "Doorstep Delivery"})
+                  </div>
+                  <Link href={`/orders/${order.id}`} className="btn btn-sm">
+                    <span>View Bill & Details</span>
+                    <ArrowRight size={13} />
+                  </Link>
                 </div>
               </div>
 
