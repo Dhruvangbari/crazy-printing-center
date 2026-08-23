@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { sendWhatsAppCloudText } from "../../../lib/whatsappCloud";
 
 export async function POST(req) {
   try {
@@ -217,38 +218,56 @@ export async function POST(req) {
       }
     }
 
-    // --- 6. Attempt Direct WhatsApp Message Dispatch via Baileys Bot Bridge ---
+    // --- 6. Direct WhatsApp Message Dispatch (Meta WhatsApp Cloud API / Baileys Bot) ---
     let whatsappBotSent = false;
+    const whatsappBillMessage = 
+      `🧾 *PAYMENT VERIFIED & OFFICIAL BILL — DHRUVANG CRAZY PRINTING CENTER*\n` +
+      `------------------------------------\n` +
+      `📄 *Bill Number:* ${invoiceNumber}\n` +
+      `👤 *Customer:* ${customerName || "Valued Customer"}\n` +
+      `💳 *Amount Paid:* Rs.${total}.00 (PAID IN FULL ✅)\n` +
+      `✅ *UPI UTR:* ${upiUtr || "Verified by Cashier"}\n` +
+      `🖨️ *Print Job:* ${paperSize || "A4"} ${colorMode || "B&W"} (${pageCount || 1} pgs × ${copies || 1} copies)\n` +
+      `🚚 *Fulfillment:* ${deliveryMode === "DELIVERY" ? `Doorstep Delivery (${address || ""})` : "Store Counter Pickup"}\n` +
+      `------------------------------------\n` +
+      `📍 *Live Tracking & Official PDF Bill:* ${trackingUrl || "https://crazy-printing-center.vercel.app"}\n` +
+      `📞 Helpline: +91 8857871669\n\n` +
+      `Your document is currently being printed on our high-speed production printer!`;
+
     if (formattedPhone) {
-      try {
-        const botPort = process.env.BOT_PORT || 5001;
-        const botRes = await fetch(`http://127.0.0.1:${botPort}/api/send-message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: formattedPhone,
-            message: 
-              `🧾 *PAYMENT VERIFIED & OFFICIAL BILL — DHRUVANG CRAZY PRINTING CENTER*\n` +
-              `------------------------------------\n` +
-              `📄 *Bill Number:* ${invoiceNumber}\n` +
-              `👤 *Customer:* ${customerName || "Valued Customer"}\n` +
-              `💳 *Amount Paid:* Rs.${total}.00 (PAID IN FULL ✅)\n` +
-              `✅ *UPI UTR:* ${upiUtr || "Verified by Cashier"}\n` +
-              `🖨️ *Print Job:* ${paperSize || "A4"} ${colorMode || "B&W"} (${pageCount || 1} pgs × ${copies || 1} copies)\n` +
-              `🚚 *Fulfillment:* ${deliveryMode === "DELIVERY" ? `Doorstep Delivery (${address || ""})` : "Store Counter Pickup"}\n` +
-              `------------------------------------\n` +
-              `📍 *Live Tracking & Official PDF Bill:* ${trackingUrl || "https://crazy-printing-center.vercel.app"}\n` +
-              `📞 Helpline: +91 8857871669\n\n` +
-              `Your document is currently being printed on our high-speed production printer!`
-          }),
-          signal: AbortSignal.timeout(2500)
-        });
-        if (botRes.ok) {
-          whatsappBotSent = true;
-          dispatchLog.push(`WhatsApp message delivered via Baileys Bot to ${formattedPhone}`);
+      // 6a. Try Meta WhatsApp Cloud API first (Serverless Vercel)
+      if (process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
+        try {
+          const cloudRes = await sendWhatsAppCloudText(formattedPhone, whatsappBillMessage);
+          if (cloudRes.success) {
+            whatsappBotSent = true;
+            dispatchLog.push(`WhatsApp delivered via Meta Cloud API to ${formattedPhone}`);
+          }
+        } catch (err) {
+          console.warn("Meta WhatsApp Cloud API error:", err.message);
         }
-      } catch (err) {
-        // Bot is offline or in separate process, graceful fallback
+      }
+
+      // 6b. Try Local / Self-Hosted Baileys Bot Bridge if Cloud API not configured
+      if (!whatsappBotSent) {
+        try {
+          const botPort = process.env.BOT_PORT || 5001;
+          const botRes = await fetch(`http://127.0.0.1:${botPort}/api/send-message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone: formattedPhone,
+              message: whatsappBillMessage,
+            }),
+            signal: AbortSignal.timeout(2500)
+          });
+          if (botRes.ok) {
+            whatsappBotSent = true;
+            dispatchLog.push(`WhatsApp delivered via Baileys Bot to ${formattedPhone}`);
+          }
+        } catch (err) {
+          // Bot is offline or in separate process, graceful fallback
+        }
       }
     }
 
