@@ -17,7 +17,8 @@ import {
   X,
   Bell,
   BellRing,
-  ExternalLink
+  ExternalLink,
+  Receipt
 } from "lucide-react";
 import { requestWebNotificationPermission } from "../lib/webNotifications";
 
@@ -157,6 +158,14 @@ export default function Navbar() {
           >
             <Search size={17} />
             <span>Track</span>
+          </Link>
+
+          <Link 
+            href="/bills" 
+            className={`nav-link ${pathname === "/bills" ? "active" : ""}`}
+          >
+            <Receipt size={17} />
+            <span>Bill Center</span>
           </Link>
 
           {mounted && user && (
@@ -383,6 +392,14 @@ export default function Navbar() {
           >
             <Search size={18} />
             <span>Track Order</span>
+          </Link>
+
+          <Link 
+            href="/bills" 
+            className={`mobile-nav-link ${pathname === "/bills" ? "active" : ""}`}
+          >
+            <Receipt size={18} />
+            <span>Bill Center</span>
           </Link>
 
           {mounted && user && (
