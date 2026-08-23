@@ -32,21 +32,27 @@ export default function Login() {
         return;
       }
 
-      // Check if user is admin
-      if (data?.user) {
-        const { data: profile } = await s
-          .from("profiles")
-          .select("role")
-          .eq("id", data.user.id)
-          .single();
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const returnUrl = params.get("returnUrl") || params.get("redirect");
 
-        if (profile?.role === "ADMIN") {
-          router.push("/admin");
+        if (data?.user) {
+          const { data: profile } = await s
+            .from("profiles")
+            .select("role")
+            .eq("id", data.user.id)
+            .single();
+
+          if (profile?.role === "ADMIN") {
+            window.location.href = "/admin";
+          } else if (returnUrl) {
+            window.location.href = returnUrl;
+          } else {
+            window.location.href = "/orders";
+          }
         } else {
-          router.push("/orders");
+          window.location.href = returnUrl || "/orders";
         }
-      } else {
-        router.push("/orders");
       }
     } catch (err) {
       setError(err.message || "Login failed");
@@ -60,12 +66,24 @@ export default function Login() {
 
     try {
       const s = supabase();
-      const redirectUrl = `${window.location.origin}/auth/callback`;
+      const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const returnUrl = params.get("returnUrl") || params.get("redirect") || "/orders";
+        localStorage.setItem("cpc_auth_origin", currentOrigin);
+        localStorage.setItem("cpc_auth_return", returnUrl);
+      }
+
+      const redirectUrl = `${currentOrigin}/auth/callback`;
 
       const { error } = await s.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: redirectUrl,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
 

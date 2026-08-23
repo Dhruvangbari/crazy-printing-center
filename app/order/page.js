@@ -174,11 +174,20 @@ export default function Order() {
     setGoogleLoading(true);
     try {
       const s = supabase();
-      const redirectUrl = `${window.location.origin}/auth/callback`;
+      const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cpc_auth_origin", currentOrigin);
+        localStorage.setItem("cpc_auth_return", "/order");
+      }
+      const redirectUrl = `${currentOrigin}/auth/callback`;
       const { error } = await s.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: redirectUrl,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
       if (error) throw error;

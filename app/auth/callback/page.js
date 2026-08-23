@@ -13,6 +13,16 @@ export default function AuthCallback() {
 
     async function handleAuth() {
       try {
+        // 1. Check if Supabase redirected to an old domain when a different origin initiated login
+        if (typeof window !== "undefined") {
+          const savedOrigin = localStorage.getItem("cpc_auth_origin");
+          if (savedOrigin && savedOrigin !== window.location.origin) {
+            // Forward session parameters to current active site
+            window.location.href = `${savedOrigin}/auth/callback${window.location.search}${window.location.hash}`;
+            return;
+          }
+        }
+
         const { data: { user }, error } = await s.auth.getUser();
 
         if (error) {
@@ -44,13 +54,21 @@ export default function AuthCallback() {
             .eq("id", user.id)
             .single();
 
+          const returnUrl = typeof window !== "undefined" ? localStorage.getItem("cpc_auth_return") : null;
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("cpc_auth_return");
+            localStorage.removeItem("cpc_auth_origin");
+          }
+
           if (profile?.role === "ADMIN") {
-            router.push("/admin");
+            window.location.href = "/admin";
+          } else if (returnUrl) {
+            window.location.href = returnUrl;
           } else {
-            router.push("/orders");
+            window.location.href = "/orders";
           }
         } else {
-          router.push("/login");
+          window.location.href = "/login";
         }
       } catch (err) {
         setErrorMsg(err.message || "Authentication failed");
