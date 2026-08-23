@@ -11,15 +11,18 @@ import {
   Check, 
   IndianRupee, 
   AlertCircle, 
-  ArrowRight,
-  Shield,
-  Layers,
-  User,
-  Phone,
-  MapPin,
-  Clock,
-  BookOpen,
-  Zap
+  ArrowRight, 
+  Shield, 
+  Layers, 
+  User, 
+  Phone, 
+  MapPin, 
+  Clock, 
+  BookOpen, 
+  Zap,
+  Home,
+  Plus,
+  Minus
 } from "lucide-react";
 
 const BINDING_OPTIONS = [
@@ -31,11 +34,48 @@ const BINDING_OPTIONS = [
   { id: "LAMINATION", label: "Lamination", desc: "Glossy waterproof pouch", price: 15 },
 ];
 
+async function countPdfPages(file) {
+  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    try {
+      const buffer = await file.arrayBuffer();
+      const text = new TextDecoder("latin1").decode(buffer);
+
+      // Method 1: Pages catalog /Count N
+      const pagesRegex = /\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/gi;
+      let maxCount = 0;
+      let m;
+      while ((m = pagesRegex.exec(text)) !== null) {
+        const val = parseInt(m[1], 10);
+        if (val > maxCount) maxCount = val;
+      }
+      if (maxCount > 0) return maxCount;
+
+      // Method 2: Any /Count N
+      const countRegex = /\/Count\s+(\d+)/gi;
+      while ((m = countRegex.exec(text)) !== null) {
+        const val = parseInt(m[1], 10);
+        if (val > maxCount) maxCount = val;
+      }
+      if (maxCount > 0) return maxCount;
+
+      // Method 3: Count /Type /Page
+      const pageMatches = text.match(/\/Type\s*\/Page\b/g);
+      if (pageMatches && pageMatches.length > 0) {
+        return pageMatches.length;
+      }
+    } catch (e) {
+      console.warn("Failed to auto-detect PDF page count:", e);
+    }
+  }
+  return 1;
+}
+
 export default function Order() {
   const router = useRouter();
   const fileInputRef = useRef(null);
   const [files, setFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [detectingPages, setDetectingPages] = useState(false);
   
   // Customer & Delivery info
   const [customerName, setCustomerName] = useState("");
@@ -89,7 +129,9 @@ export default function Order() {
     loadUserData();
   }, []);
 
-  // Calculate live itemized pricing
+  // Calculate live itemized pricing based on TOTAL PAGES across all documents
+  const totalPages = files.length > 0 ? files.reduce((sum, f) => sum + (Number(f.pages) || 1), 0) : 1;
+
   useEffect(() => {
     let sizeMultiplier =
       {
@@ -105,11 +147,11 @@ export default function Order() {
     let sideDiscount = sides === "DOUBLE" ? 0.9 : 1;
     let paperTypeAdd = paperType === "GLOSSY" ? 3 : paperType === "PREMIUM" ? 1.5 : 0;
     let numCopies = Math.max(1, Number(copies) || 1);
-    let numFiles = Math.max(1, files.length);
 
+    // Multiply by total pages of document!
     let baseCalculated = Math.max(
       5,
-      Math.ceil((colorRate * sizeMultiplier * sideDiscount + paperTypeAdd) * numCopies * numFiles)
+      Math.ceil((colorRate * sizeMultiplier * sideDiscount + paperTypeAdd) * numCopies * totalPages)
     );
 
     const selectedBinding = BINDING_OPTIONS.find((b) => b.id === bindingType) || { price: 0 };
@@ -120,7 +162,7 @@ export default function Order() {
     setBindingCost(bindingFee);
     setPriorityCost(priorityFee);
     setTotalPrice(baseCalculated + bindingFee + priorityFee);
-  }, [paperSize, colorMode, sides, paperType, copies, files, bindingType, priority]);
+  }, [paperSize, colorMode, sides, paperType, copies, files, totalPages, bindingType, priority]);
 
   function handleDrag(e) {
     e.preventDefault();
@@ -132,19 +174,48 @@ export default function Order() {
     }
   }
 
+  async function addFiles(fileList) {
+    setDetectingPages(true);
+    const processed = [];
+    for (const f of fileList) {
+      const detectedPages = await countPdfPages(f);
+      processed.push({
+        file: f,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        pages: detectedPages,
+      });
+    }
+    setFiles((prev) => [...prev, ...processed]);
+    setDetectingPages(false);
+  }
+
   function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
+      addFiles(Array.from(e.dataTransfer.files));
     }
   }
 
   function handleFileSelect(e) {
     if (e.target.files && e.target.files.length > 0) {
-      setFiles((prev) => [...prev, ...Array.from(e.target.files)]);
+      addFiles(Array.from(e.target.files));
     }
+  }
+
+  function updateFilePages(index, delta) {
+    setFiles((prev) =>
+      prev.map((f, i) => {
+        if (i === index) {
+          const newPages = Math.max(1, (f.pages || 1) + delta);
+          return { ...f, pages: newPages };
+        }
+        return f;
+      })
+    );
   }
 
   function removeFile(index) {
@@ -221,6 +292,7 @@ export default function Order() {
         copies: Number(copies) || 1,
         binding_type: bindingType,
         priority: priority,
+        page_count: totalPages,
         notes: notes.trim() || null,
         subtotal: printCost,
         total: totalPrice,
@@ -235,7 +307,7 @@ export default function Order() {
         const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const path = `${user.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
 
-        let u = await s.storage.from("documents").upload(path, f);
+        let u = await s.storage.from("documents").upload(path, f.file);
         if (u.error) {
           console.warn("Storage upload warning:", u.error);
         }
@@ -300,7 +372,7 @@ export default function Order() {
         await s.from("status_history").insert({
           order_id: order.id,
           status: "ORDER_RECEIVED",
-          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${copies} copy(s).`,
+          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s).`,
         });
       }
 
@@ -313,40 +385,47 @@ export default function Order() {
 
   return (
     <main className="wrap">
-      <div style={{ maxWidth: 880, margin: "0 auto" }}>
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.5 }}>Create Print Order</h1>
+      {/* Navigation Breadcrumb */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+        <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
+          <Home size={15} />
+          <span>Home</span>
+        </Link>
+        <span style={{ color: "var(--border)" }}>/</span>
+        <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>New Print Order</span>
+      </div>
+
+      <div style={{ maxWidth: 840, margin: "0 auto 40px" }}>
+        <div style={{ marginBottom: 28, textAlign: "center" }}>
+          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.5 }}>Create New Print Order</h1>
           <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 4 }}>
-            Fast document uploading, custom binding, and doorstep delivery options
+            Upload your documents, customize paper and binding, and get instant price calculation
           </p>
         </div>
 
         {err && (
-          <div className="error">
-            <AlertCircle size={16} />
+          <div className="error" style={{ marginBottom: 20 }}>
+            <AlertCircle size={18} />
             <span>{err}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* 1. Customer Information Card */}
+          {/* 1. Customer & Contact Details */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <User size={20} color="var(--primary)" />
                 <span>Customer & Contact Details</span>
               </h2>
-              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                For order updates & delivery
-              </span>
             </div>
 
             <div className="row">
               <div className="field">
-                <label>Recipient / Customer Name *</label>
+                <label>Customer Full Name *</label>
                 <input
                   type="text"
-                  placeholder="Full Name"
+                  placeholder="e.g., Dhruvang Bari"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   required
@@ -356,7 +435,7 @@ export default function Order() {
               <div className="field">
                 <label>Contact Phone / WhatsApp *</label>
                 <input
-                  type="text"
+                  type="tel"
                   placeholder="+91 9876543210"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
@@ -366,15 +445,15 @@ export default function Order() {
             </div>
           </div>
 
-          {/* 2. Document Upload Dropzone */}
+          {/* 2. Document Upload Dropzone with Automatic Page Detection */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <UploadCloud size={20} color="var(--primary)" />
                 <span>Attach Documents</span>
               </h2>
-              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                {files.length} {files.length === 1 ? "file" : "files"} selected
+              <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+                {files.length} {files.length === 1 ? "file" : "files"} ({totalPages} pages total)
               </span>
             </div>
 
@@ -396,15 +475,15 @@ export default function Order() {
               />
               <UploadCloud className="dropzone-icon" />
               <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-main)", marginBottom: 4 }}>
-                Click to browse or drag & drop files here
+                {detectingPages ? "Analyzing PDF page counts..." : "Click to browse or drag & drop files here"}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                Supports PDF, Word (DOCX), PowerPoint, and high-res Images
+                PDF pages are automatically detected and priced per page!
               </div>
             </div>
 
             {files.length > 0 && (
-              <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
                 {files.map((file, index) => (
                   <div
                     key={index}
@@ -413,30 +492,63 @@ export default function Order() {
                       alignItems: "center",
                       justifyContent: "space-between",
                       background: "#f8fafc",
-                      padding: "10px 14px",
+                      padding: "12px 16px",
                       borderRadius: "var(--radius-md)",
                       border: "1px solid var(--border)",
+                      flexWrap: "wrap",
+                      gap: 10,
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
-                      <FileText size={18} color="var(--primary)" />
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden", minWidth: 220 }}>
+                      <FileText size={20} color="var(--primary)" />
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{file.name}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 8 }}>
-                          ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                        </span>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{file.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer" }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {/* Page Count Counter Widget */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "white", padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>Pages:</span>
+                        <button
+                          type="button"
+                          onClick={() => updateFilePages(index, -1)}
+                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer" }}
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: "center" }}>
+                          {file.pages || 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateFilePages(index, 1)}
+                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer" }}
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", padding: 4 }}
+                        title="Remove file"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
+
+                {/* Total Pages Banner */}
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "10px 16px", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, color: "#1e40af", fontWeight: 700 }}>
+                  <span>Total Pages to Print:</span>
+                  <span>{totalPages} Pages across {files.length} {files.length === 1 ? "document" : "documents"}</span>
+                </div>
               </div>
             )}
           </div>
@@ -450,12 +562,12 @@ export default function Order() {
               </h2>
             </div>
 
-            <div className="row">
+            <div className="row" style={{ marginBottom: 16 }}>
               <div className="field">
                 <label>Paper Size</label>
                 <select value={paperSize} onChange={(e) => setPaperSize(e.target.value)}>
                   <option value="A4">A4 (Standard 210 x 297 mm)</option>
-                  <option value="A5">A5 (Half A4 148 x 210 mm)</option>
+                  <option value="A5">A5 (Booklet 148 x 210 mm)</option>
                   <option value="A3">A3 (Large 297 x 420 mm)</option>
                   <option value="Legal">Legal (8.5 x 14 in)</option>
                   <option value="Letter">Letter (8.5 x 11 in)</option>
@@ -477,7 +589,7 @@ export default function Order() {
                 <label>Print Sides</label>
                 <select value={sides} onChange={(e) => setSides(e.target.value)}>
                   <option value="SINGLE">Single Sided</option>
-                  <option value="DOUBLE">Double Sided (Back-to-Back)</option>
+                  <option value="DOUBLE">Double Sided (Back-to-Back - 10% Off)</option>
                 </select>
               </div>
 
@@ -485,22 +597,22 @@ export default function Order() {
                 <label>Paper Quality</label>
                 <select value={paperType} onChange={(e) => setPaperType(e.target.value)}>
                   <option value="NORMAL">Standard 75 GSM Bond Paper</option>
-                  <option value="PREMIUM">Premium 100 GSM Bond Paper (+₹1.50)</option>
-                  <option value="GLOSSY">Glossy 200 GSM Photo Paper (+₹3.00)</option>
+                  <option value="PREMIUM">Premium 100 GSM Bond Paper (+₹1.50/pg)</option>
+                  <option value="GLOSSY">Glossy 200 GSM Photo Paper (+₹3.00/pg)</option>
                 </select>
               </div>
-            </div>
 
-            <div className="field" style={{ maxWidth: 200 }}>
-              <label>Number of Copies</label>
-              <input
-                type="number"
-                min="1"
-                max="1000"
-                value={copies}
-                onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value) || 1))}
-                required
-              />
+              <div className="field">
+                <label>Number of Copies</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={copies}
+                  onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value) || 1))}
+                  required
+                />
+              </div>
             </div>
           </div>
 
@@ -581,70 +693,60 @@ export default function Order() {
                   />
                 </div>
 
-                <div className="row">
+                <div className="row" style={{ marginTop: 12 }}>
                   <div className="field">
-                    <label>Landmark / Nearby Spot</label>
+                    <label>Landmark (Optional)</label>
                     <input
                       type="text"
-                      placeholder="e.g., Near Metro Station / Opposite Axis Bank"
+                      placeholder="e.g., Near City Hospital"
                       value={landmark}
                       onChange={(e) => setLandmark(e.target.value)}
                     />
                   </div>
 
                   <div className="field">
-                    <label>City & Area</label>
+                    <label>City / Town</label>
                     <input
                       type="text"
-                      placeholder="e.g., Pune / Mumbai / Bangalore"
+                      placeholder="e.g., Pune"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                     />
                   </div>
-                </div>
 
-                <div className="field" style={{ maxWidth: 200 }}>
-                  <label>Pincode</label>
-                  <input
-                    type="text"
-                    placeholder="411001"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                  />
+                  <div className="field">
+                    <label>Pincode</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., 411001"
+                      value={pincode}
+                      onChange={(e) => setPincode(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             )}
-
-            <div className="field" style={{ marginTop: 16 }}>
-              <label>Special Instructions / Notes for Printing</label>
-              <textarea
-                placeholder="e.g., Print pages 1-15 only, staple top left, punch holes for binder..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-              />
-            </div>
           </div>
 
-          {/* 6. Order Priority & Urgency */}
+          {/* 6. Processing Speed & Instructions */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
-                <Zap size={20} color="var(--primary)" />
-                <span>Processing Speed</span>
+                <Clock size={20} color="var(--primary)" />
+                <span>Processing Speed & Instructions</span>
               </h2>
             </div>
 
-            <div className="row">
+            <div className="row" style={{ marginBottom: 16 }}>
               <div
                 className={`option-card ${priority === "STANDARD" ? "selected" : ""}`}
                 onClick={() => setPriority("STANDARD")}
               >
                 <div className="option-card-title">
-                  <span>Standard Turnaround</span>
+                  <span>⏱️ Standard Queue</span>
                   {priority === "STANDARD" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Ready within normal queue processing time</div>
+                <div className="option-card-desc">Printed in regular sequence (Ready in 30-45 mins)</div>
                 <div className="option-card-price">Included</div>
               </div>
 
@@ -653,51 +755,74 @@ export default function Order() {
                 onClick={() => setPriority("EXPRESS")}
               >
                 <div className="option-card-title">
-                  <span>⚡ Express Priority Rush</span>
+                  <span>⚡ Express Rush</span>
                   {priority === "EXPRESS" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Jump to #1 in printer queue for immediate printing</div>
+                <div className="option-card-desc">Top-of-queue priority execution (Ready in 10-15 mins)</div>
                 <div className="option-card-price">+₹20</div>
               </div>
             </div>
+
+            <div className="field">
+              <label>Special Instructions / Notes (Optional)</label>
+              <textarea
+                placeholder="e.g. Please print page 1-5 only, double side orientation flip on long edge..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
           </div>
 
-          {/* 7. Comprehensive Price Breakdown & Submit Card */}
-          <div
-            className="card"
-            style={{
-              background: "radial-gradient(circle at 90% 10%, #1e1b4b 0%, #0f172a 100%)",
-              color: "white",
-              padding: 28,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
-              <div>
-                <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>
-                  Itemized Cost Breakdown
-                </div>
-                <div style={{ fontSize: 14, color: "#e2e8f0", marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div>• Base Print ({paperSize}, {colorMode}, {copies} copies): <b>₹{printCost}</b></div>
-                  {bindingCost > 0 && <div>• Finishing / Binding ({bindingType}): <b>₹{bindingCost}</b></div>}
-                  {priorityCost > 0 && <div>• Express Rush Processing: <b>₹{priorityCost}</b></div>}
-                  <div>• Delivery Mode: <b>{deliveryMode === "PICKUP" ? "Shop Pickup (Free)" : "Doorstep Delivery"}</b></div>
-                </div>
+          {/* 7. Live Cost Summary & Order Submission */}
+          <div className="card" style={{ background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)", color: "white", padding: 24 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <Sparkles size={20} color="#38bdf8" />
+              <span>Live Order Summary & Cost Breakdown</span>
+            </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 12, color: "#a5f3fc", fontWeight: 700 }}>TOTAL PAYABLE AMOUNT</div>
-                  <div style={{ fontSize: 36, fontWeight: 900, color: "#38bdf8" }}>₹{totalPrice}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14, borderBottom: "1px solid rgba(255,255,255,0.15)", paddingBottom: 16, marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94a3b8" }}>
+                  Printing ({paperSize} • {colorMode === "COLOR" ? "Color @ ₹5" : "B&W @ ₹3"} • {totalPages} pages × {copies} copies):
+                </span>
+                <b>₹{printCost}.00</b>
+              </div>
+
+              {bindingCost > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#94a3b8" }}>Binding Add-on ({bindingType}):</span>
+                  <b>+₹{bindingCost}.00</b>
                 </div>
+              )}
+
+              {priorityCost > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#94a3b8" }}>⚡ Express Queue Fee:</span>
+                  <b>+₹{priorityCost}.00</b>
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94a3b8" }}>Fulfillment Mode:</span>
+                <b>{deliveryMode === "PICKUP" ? "Counter Pickup (Free)" : "Doorstep Delivery"}</b>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>GRAND TOTAL TO PAY</div>
+                <div style={{ fontSize: 32, fontWeight: 900, color: "#38bdf8" }}>₹{totalPrice}.00</div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || files.length === 0}
                 className="btn btn-lg"
-                style={{ background: "#4f46e5", padding: "16px 32px", fontSize: 17 }}
+                style={{ background: "#22c55e", color: "white", padding: "14px 28px", fontSize: 16 }}
               >
-                <Sparkles size={20} />
                 <span>{loading ? "Creating Order..." : "Proceed to UPI Payment"}</span>
-                <ArrowRight size={20} />
+                <ArrowRight size={18} />
               </button>
             </div>
           </div>
