@@ -17,11 +17,12 @@ import {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setMounted(true);
     const s = supabase();
 
     async function loadUser() {
@@ -40,8 +41,6 @@ export default function Navbar() {
         }
       } catch (e) {
         console.error("Error loading user profile:", e);
-      } finally {
-        setLoading(false);
       }
     }
 
@@ -100,7 +99,7 @@ export default function Navbar() {
             <span>Track</span>
           </Link>
 
-          {user && (
+          {mounted && user && (
             <Link 
               href="/orders" 
               className={`nav-link ${pathname === "/orders" ? "active" : ""}`}
@@ -110,45 +109,45 @@ export default function Navbar() {
             </Link>
           )}
 
-          {isAdmin && (
+          {mounted && isAdmin && (
             <Link href="/admin" className="admin-nav-badge">
               <ShieldCheck size={16} />
               <span>Admin Panel</span>
             </Link>
           )}
 
-          {!loading && (
-            <>
-              {user ? (
-                <div className="user-menu">
-                  <Link 
-                    href="/profile" 
-                    className="avatar-badge" 
-                    title={profile?.name || user.email}
-                  >
-                    {(profile?.name || user.email || "U")[0].toUpperCase()}
-                  </Link>
+          {mounted ? (
+            user ? (
+              <div className="user-menu">
+                <Link 
+                  href="/profile" 
+                  className="avatar-badge" 
+                  title={profile?.name || user.email}
+                >
+                  {(profile?.name || user.email || "U")[0].toUpperCase()}
+                </Link>
 
-                  <button 
-                    onClick={handleLogout} 
-                    className="btn btn-secondary btn-sm" 
-                    title="Log Out"
-                  >
-                    <LogOut size={15} />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <Link href="/login" className="btn btn-secondary btn-sm">
-                    Login
-                  </Link>
-                  <Link href="/register" className="btn btn-sm">
-                    Register
-                  </Link>
-                </div>
-              )}
-            </>
+                <button 
+                  onClick={handleLogout} 
+                  className="btn btn-secondary btn-sm" 
+                  title="Log Out"
+                >
+                  <LogOut size={15} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <Link href="/login" className="btn btn-secondary btn-sm">
+                  Login
+                </Link>
+                <Link href="/register" className="btn btn-sm">
+                  Register
+                </Link>
+              </div>
+            )
+          ) : (
+            <div style={{ width: 120, height: 32 }} />
           )}
         </nav>
       </div>
