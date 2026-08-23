@@ -1,0 +1,1 @@
+import "./globals.css";export const metadata={title:"Crazy Printing Center",description:"Upload, pay, print and track."};export default function RootLayout({children}){return <html><body>{children}</body></html>}
