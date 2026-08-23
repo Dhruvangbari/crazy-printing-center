@@ -15,8 +15,12 @@ import {
   Sparkles, 
   ArrowRight,
   CheckCircle,
-  Search
+  Search,
+  MessageCircle,
+  User,
+  Phone
 } from "lucide-react";
+import { openWhatsAppChat } from "../lib/whatsapp";
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +29,44 @@ export default function Home() {
   const [calcSides, setCalcSides] = useState("SINGLE");
   const [calcCopies, setCalcCopies] = useState(1);
   const [calcPages, setCalcPages] = useState(1);
+  const [estName, setEstName] = useState("");
+  const [estPhone, setEstPhone] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem("cpc_saved_customer_data") || "{}");
+        if (saved.name) setEstName(saved.name);
+        if (saved.phone) setEstPhone(saved.phone);
+      } catch (e) {}
+    }
+  }, []);
+
+  function handleSendAdvanceBillWhatsApp() {
+    const cleanPhone = (estPhone || "").replace(/[^0-9]/g, "");
+    if (!cleanPhone || cleanPhone.length < 10) {
+      alert("Please enter a valid 10-digit WhatsApp phone number.");
+      return;
+    }
+    const customer = estName.trim() || "Customer";
+    const totalPgs = calcPages * calcCopies;
+    const quotNum = `ADV-CPC-${Date.now().toString().slice(-6)}`;
+    const msg = 
+      `🧾 *CRAZY PRINTING CENTER - ADVANCE BILL & ESTIMATE*\n` +
+      `--------------------------------\n` +
+      `📄 *Quotation Ref:* ${quotNum}\n` +
+      `👤 *Customer Name:* ${customer}\n` +
+      `📞 *WhatsApp:* ${estPhone}\n` +
+      `🖨️ *Print Specs:* ${calcSize} • ${calcColor === "COLOR" ? "Full Colour" : "Black & White"} • ${calcSides === "DOUBLE" ? "Double Sided" : "Single Sided"}\n` +
+      `📄 *Pages × Copies:* ${calcPages} pgs × ${calcCopies} ${calcCopies === 1 ? "copy" : "copies"} (${totalPgs} total pages)\n` +
+      `💰 *Estimated Total Amount:* Rs.${estPrice}.00\n` +
+      `💳 *UPI Payment ID:* crazyprinting@upi\n` +
+      `--------------------------------\n` +
+      `📍 *Upload Your Files & Place Order:* ${typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center.vercel.app"}/order\n\n` +
+      `Crazy Printing Center • Fast Online Printing Service`;
+
+    openWhatsAppChat(estPhone, msg);
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -167,9 +209,39 @@ export default function Home() {
                 />
               </div>
             </div>
+
+            {/* Advance WhatsApp Quotation Input Row */}
+            <div style={{ background: "#f1f5f9", padding: "12px 16px", borderRadius: "var(--radius-md)", marginTop: 10, border: "1px dashed var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <MessageCircle size={14} />
+                <span>Instant WhatsApp Advance Bill Delivery</span>
+              </div>
+              <div className="row" style={{ marginBottom: 0 }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>Your Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dhruvang Bari"
+                    value={estName}
+                    onChange={(e) => setEstName(e.target.value)}
+                    style={{ fontSize: 13, padding: "8px 10px" }}
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: 12 }}>WhatsApp Mobile Number <span style={{ color: "var(--danger)" }}>*</span></label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 9876543210"
+                    value={estPhone}
+                    onChange={(e) => setEstPhone(e.target.value)}
+                    style={{ fontSize: 13, padding: "8px 10px" }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
+          <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
             <div>
               <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>
                 ESTIMATED TOTAL ({calcPages} {calcPages === 1 ? "pg" : "pgs"} × {calcCopies} {calcCopies === 1 ? "copy" : "copies"})
@@ -177,10 +249,22 @@ export default function Home() {
               <div style={{ fontSize: 28, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
             </div>
 
-            <Link href="/order" className="btn btn-sm">
-              <span>Order This Job</span>
-              <ArrowRight size={14} />
-            </Link>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleSendAdvanceBillWhatsApp}
+                className="btn btn-whatsapp btn-sm"
+                title="Send official advance bill quotation directly to WhatsApp"
+              >
+                <MessageCircle size={15} />
+                <span>Send Advance Bill to WhatsApp</span>
+              </button>
+
+              <Link href="/order" className="btn btn-sm">
+                <span>Upload & Order</span>
+                <ArrowRight size={14} />
+              </Link>
+            </div>
           </div>
         </div>
 

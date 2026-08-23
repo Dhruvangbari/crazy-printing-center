@@ -25,10 +25,11 @@ import {
   Minus,
   CheckCircle2,
   Lock,
-  LogIn
+  LogIn,
+  MessageCircle
 } from "lucide-react";
-
 import { countDocumentPages } from "../../lib/pageCounter";
+import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -468,6 +469,15 @@ export default function Order() {
           message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s).`,
         });
       }
+
+      // Auto-dispatch Advance Bill to Customer's WhatsApp
+      try {
+        const advanceBillMsg = buildOrderStatusMessage(order, "BILL");
+        const advanceWhatsAppUrl = buildWhatsAppLink(customerPhone, advanceBillMsg);
+        if (typeof window !== "undefined" && customerPhone) {
+          window.open(advanceWhatsAppUrl, "_blank", "noopener,noreferrer");
+        }
+      } catch (e) {}
 
       router.push(`/orders/${order.id}`);
     } catch (unexpected) {
@@ -993,9 +1003,10 @@ export default function Order() {
                 type="submit"
                 disabled={loading || files.length === 0}
                 className="btn btn-lg"
-                style={{ background: "#22c55e", color: "white", padding: "14px 28px", fontSize: 16 }}
+                style={{ background: "#16a34a", color: "white", padding: "14px 28px", fontSize: 16, display: "inline-flex", alignItems: "center", gap: 8 }}
               >
-                <span>{loading ? "Creating Order..." : "Proceed to UPI Payment"}</span>
+                <MessageCircle size={20} />
+                <span>{loading ? "Creating Order & Bill..." : "Create Order & Send Advance Bill to WhatsApp"}</span>
                 <ArrowRight size={18} />
               </button>
             </div>
