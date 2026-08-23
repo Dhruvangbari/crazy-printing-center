@@ -205,6 +205,33 @@ export default function Login() {
               Create Account
             </Link>
           </div>
+
+          {/* Supabase OAuth Configuration Helper */}
+          <div style={{ marginTop: 24, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "#64748b" }}>
+            <div style={{ fontWeight: 800, color: "#334155", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+              <span>⚙️ Google Login Opening Old Website?</span>
+            </div>
+            <p style={{ margin: "4px 0 8px", lineHeight: 1.4, fontSize: 11 }}>
+              Supabase needs your active domain in its redirect whitelist.
+            </p>
+            <ol style={{ margin: "0 0 8px 16px", padding: 0, fontSize: 11, lineHeight: 1.5 }}>
+              <li>Open <b>Supabase Dashboard ➔ Authentication ➔ URL Configuration</b>.</li>
+              <li>Set <b>Site URL</b> to your current domain.</li>
+              <li>Add <code>{typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center.vercel.app"}/**</code> to <b>Redirect URLs</b>.</li>
+            </ol>
+            <a
+              href={
+                (process.env.NEXT_PUBLIC_SUPABASE_URL || "").includes(".supabase.co")
+                  ? `https://supabase.com/dashboard/project/${(process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace("https://", "").replace("http://", "").split(".")[0]}/auth/url-configuration`
+                  : "https://supabase.com/dashboard"
+              }
+              target="_blank"
+              rel="noreferrer"
+              style={{ display: "inline-block", color: "#4f46e5", fontWeight: 800, fontSize: 11 }}
+            >
+              Open Supabase URL Configuration ↗
+            </a>
+          </div>
         </div>
       </div>
     </main>
