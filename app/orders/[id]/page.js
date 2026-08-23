@@ -30,7 +30,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   ShieldAlert,
-  Home
+  Home,
+  RefreshCw
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
@@ -43,6 +44,7 @@ export default function Detail() {
   const [utrNumber, setUtrNumber] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showBillModal, setShowBillModal] = useState(false);
   const [proofUrl, setProofUrl] = useState(null);
@@ -50,51 +52,87 @@ export default function Detail() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailStatus, setEmailStatus] = useState("");
 
-  useEffect(() => {
-    async function loadOrder() {
-      const s = supabase();
-      const { data } = await s
-        .from("orders")
-        .select("*, order_files(*), status_history(*)")
-        .eq("id", p.id)
-        .single();
-      setO(data);
-      if (data?.upi_utr) {
-        setUtrNumber(data.upi_utr);
-      }
+  async function loadOrder(isSilent = false) {
+    if (!p.id) return;
+    if (!isSilent) setRefreshing(true);
+    const s = supabase();
+    const { data } = await s
+      .from("orders")
+      .select("*, order_files(*), status_history(*)")
+      .eq("id", p.id)
+      .single();
+    setO(data);
+    if (data?.upi_utr) {
+      setUtrNumber(data.upi_utr);
+    }
 
-      // Load Payment Proof Image Preview
-      if (data?.payment_proof_path) {
+    // Load Payment Proof Image Preview
+    if (data?.payment_proof_path) {
+      try {
+        const { data: urlData } = await s.storage
+          .from("payment-proofs")
+          .createSignedUrl(data.payment_proof_path, 3600);
+        if (urlData?.signedUrl) {
+          setProofUrl(urlData.signedUrl);
+        } else {
+          const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(data.payment_proof_path);
+          setProofUrl(pub?.publicUrl);
+        }
+      } catch (e) {}
+    }
+
+    // Load Document Previews
+    if (data?.order_files && data.order_files.length > 0) {
+      const urlMap = {};
+      for (const file of data.order_files) {
         try {
-          const { data: urlData } = await s.storage
-            .from("payment-proofs")
-            .createSignedUrl(data.payment_proof_path, 3600);
-          if (urlData?.signedUrl) {
-            setProofUrl(urlData.signedUrl);
-          } else {
-            const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(data.payment_proof_path);
-            setProofUrl(pub?.publicUrl);
+          const { data: docUrl } = await s.storage
+            .from("documents")
+            .createSignedUrl(file.storage_path, 3600);
+          if (docUrl?.signedUrl) {
+            urlMap[file.id] = docUrl.signedUrl;
           }
         } catch (e) {}
       }
-
-      // Load Document Previews
-      if (data?.order_files && data.order_files.length > 0) {
-        const urlMap = {};
-        for (const file of data.order_files) {
-          try {
-            const { data: docUrl } = await s.storage
-              .from("documents")
-              .createSignedUrl(file.storage_path, 3600);
-            if (docUrl?.signedUrl) {
-              urlMap[file.id] = docUrl.signedUrl;
-            }
-          } catch (e) {}
-        }
-        setFileUrls(urlMap);
-      }
+      setFileUrls(urlMap);
     }
-    if (p.id) loadOrder();
+    setRefreshing(false);
+  }
+
+  useEffect(() => {
+    if (p.id) {
+      loadOrder();
+
+      const s = supabase();
+      // 1. Supabase Postgres Realtime Subscription for this order
+      const channel = s
+        .channel(`order_live_sync_${p.id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${p.id}` },
+          () => {
+            loadOrder(true);
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "status_history", filter: `order_id=eq.${p.id}` },
+          () => {
+            loadOrder(true);
+          }
+        )
+        .subscribe();
+
+      // 2. Auto-refresh polling every 5 seconds
+      const interval = setInterval(() => {
+        loadOrder(true);
+      }, 5000);
+
+      return () => {
+        s.removeChannel(channel);
+        clearInterval(interval);
+      };
+    }
   }, [p.id]);
 
   async function handleSendInvoiceEmail() {
@@ -299,7 +337,17 @@ export default function Detail() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={() => loadOrder(false)}
+                disabled={refreshing}
+                className="btn btn-secondary btn-sm"
+                title="Refresh order details and tracking status"
+              >
+                <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
+                <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+              </button>
+
               <button 
                 onClick={() => setShowBillModal(true)} 
                 className="btn btn-sm"

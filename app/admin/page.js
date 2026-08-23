@@ -63,25 +63,40 @@ export default function AdminDashboard() {
   const [statusMsg, setStatusMsg] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState("");
 
   useEffect(() => {
     checkAdminAndFetch();
 
-    // Setup Realtime listener for incoming orders
+    // 1. Setup Supabase Realtime subscription for instant incoming orders & updates
     const s = supabase();
     const channel = s
-      .channel("admin_orders_realtime")
+      .channel("admin_orders_realtime_channel")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },
         () => {
-          fetchOrders();
+          fetchOrders(true);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "status_history" },
+        () => {
+          fetchOrders(true);
         }
       )
       .subscribe();
 
+    // 2. Auto-refresh polling every 5 seconds as a rock-solid backup
+    const interval = setInterval(() => {
+      fetchOrders(true);
+    }, 5000);
+
     return () => {
       s.removeChannel(channel);
+      clearInterval(interval);
     };
   }, []);
 
@@ -118,7 +133,8 @@ export default function AdminDashboard() {
     }
   }
 
-  async function fetchOrders() {
+  async function fetchOrders(isSilent = false) {
+    if (!isSilent) setRefreshing(true);
     const s = supabase();
     const { data, error } = await s
       .from("orders")
@@ -129,11 +145,13 @@ export default function AdminDashboard() {
       console.error("Error fetching orders:", error);
     } else {
       setOrders(data || []);
+      setLastRefreshed(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       if (selectedOrder) {
         const updated = (data || []).find((o) => o.id === selectedOrder.id);
         if (updated) setSelectedOrder(updated);
       }
     }
+    setRefreshing(false);
   }
 
   async function handleStatusChange(orderId, newStatus) {
@@ -320,10 +338,23 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <button onClick={fetchOrders} className="btn btn-secondary btn-sm">
-          <RefreshCw size={15} />
-          <span>Refresh Orders</span>
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#ecfdf5", color: "#065f46", padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 800, border: "1px solid #a7f3d0" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
+            <span>REALTIME (5s)</span>
+          </div>
+
+          <button 
+            onClick={() => fetchOrders(false)} 
+            disabled={refreshing} 
+            className="btn btn-secondary btn-sm"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            title="Refresh order queue"
+          >
+            <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
+            <span>{refreshing ? "Refreshing..." : "Refresh Orders"}</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

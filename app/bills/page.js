@@ -22,7 +22,8 @@ import {
   Lock,
   PlusCircle,
   Eye,
-  X
+  X,
+  RefreshCw
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
 
@@ -30,6 +31,7 @@ export default function BillsHubPage() {
   const [activeTab, setActiveTab] = useState("advance"); // "advance" | "invoices" | "verify"
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   
@@ -39,30 +41,52 @@ export default function BillsHubPage() {
   const [searchError, setSearchError] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
 
-  useEffect(() => {
-    const s = supabase();
+  async function loadInvoices(isSilent = false) {
+    if (!isSilent) setRefreshing(true);
+    try {
+      const s = supabase();
+      const { data: { user } } = await s.auth.getUser();
+      setUser(user);
 
-    async function loadInvoices() {
-      try {
-        const { data: { user } } = await s.auth.getUser();
-        setUser(user);
-
-        if (user) {
-          const { data } = await s
-            .from("orders")
-            .select("*, order_files(*), status_history(*)")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false });
-          setOrders(data || []);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+      if (user) {
+        const { data } = await s
+          .from("orders")
+          .select("*, order_files(*), status_history(*)")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        setOrders(data || []);
       }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  }
 
+  useEffect(() => {
     loadInvoices();
+
+    const s = supabase();
+    const channel = s
+      .channel("bills_hub_live_sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          loadInvoices(true);
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(() => {
+      loadInvoices(true);
+    }, 6000);
+
+    return () => {
+      s.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, []);
 
   async function handleVerifySearch(e) {
@@ -171,6 +195,17 @@ export default function BillsHubPage() {
           >
             <QrCode size={16} />
             <span>3. QR Code Bill Scanner</span>
+          </button>
+
+          <button
+            onClick={() => loadInvoices(false)}
+            disabled={refreshing}
+            className="btn btn-secondary btn-sm"
+            style={{ padding: "10px 16px", display: "inline-flex", alignItems: "center", gap: 6 }}
+            title="Refresh bills and tax invoices from database"
+          >
+            <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
+            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
         </div>
 

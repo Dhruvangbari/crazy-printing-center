@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import FormattedDate from "../../components/FormattedDate";
@@ -16,7 +16,8 @@ import {
   Home,
   ArrowRight,
   MessageCircle,
-  Receipt
+  Receipt,
+  RefreshCw
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
 
@@ -25,6 +26,51 @@ export default function Track() {
   const [order, setOrder] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function reloadTrackedOrder(num, isSilent = false) {
+    if (!num) return;
+    if (!isSilent) setRefreshing(true);
+    try {
+      const s = supabase();
+      const { data, error } = await s
+        .from("orders")
+        .select("*, status_history(*)")
+        .eq("order_number", num.trim())
+        .single();
+      if (!error && data) {
+        setOrder(data);
+      }
+    } catch (e) {
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (order?.id && order?.order_number) {
+      const s = supabase();
+      const channel = s
+        .channel(`track_live_order_${order.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
+          () => {
+            reloadTrackedOrder(order.order_number, true);
+          }
+        )
+        .subscribe();
+
+      const interval = setInterval(() => {
+        reloadTrackedOrder(order.order_number, true);
+      }, 5000);
+
+      return () => {
+        s.removeChannel(channel);
+        clearInterval(interval);
+      };
+    }
+  }, [order?.id, order?.order_number]);
 
   async function handleTrack(e) {
     e.preventDefault();
@@ -147,6 +193,16 @@ export default function Track() {
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => reloadTrackedOrder(order.order_number, false)}
+                    disabled={refreshing}
+                    className="btn btn-secondary btn-sm"
+                    title="Refresh live status from print ledger"
+                  >
+                    <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
+                    <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+                  </button>
+
                   <a
                     href={buildWhatsAppLink(null, buildOrderStatusMessage(order))}
                     target="_blank"
