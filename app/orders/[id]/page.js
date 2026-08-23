@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
+import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
 
 export default function Detail() {
   const p = useParams();
@@ -628,29 +629,9 @@ export default function Detail() {
           </div>
         )}
 
-        {/* Live Timeline History */}
-        <div className="card no-print">
-          <div className="card-header">
-            <h2 className="card-title">
-              <Clock size={18} color="var(--primary)" />
-              <span>Live Order Timeline</span>
-            </h2>
-          </div>
-
-          <div className="timeline">
-            {(o.status_history || [])
-              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-              .map((h) => (
-                <div className="timeline-step" key={h.id}>
-                  <div className="timeline-dot" />
-                  <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
-                  <div className="timeline-time">
-                    <FormattedDate date={h.created_at} />
-                  </div>
-                  {h.message && <div className="timeline-msg">{h.message}</div>}
-                </div>
-              ))}
-          </div>
+        {/* Crazy Live Animated Timeline */}
+        <div className="no-print" style={{ marginTop: 24 }}>
+          <CrazyLiveTimeline order={o} />
         </div>
       </div>
 

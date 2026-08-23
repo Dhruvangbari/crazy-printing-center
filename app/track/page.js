@@ -20,6 +20,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
+import CrazyLiveTimeline from "../../components/CrazyLiveTimeline";
 
 export default function Track() {
   const [orderNumber, setOrderNumber] = useState("");
@@ -220,56 +221,6 @@ export default function Track() {
                 </div>
               </div>
 
-              {/* Visual Step Progress Bar */}
-              <div style={{ display: "flex", justifyContent: "space-between", position: "relative", margin: "30px 10px 40px" }}>
-                {/* Progress Line */}
-                <div style={{ position: "absolute", top: 18, left: 20, right: 20, height: 3, background: "#e2e8f0", zIndex: 0 }} />
-
-                {steps.map((s) => {
-                  const isCompleted = getStepStatus(s.key) === "completed";
-                  const Icon = s.icon;
-                  return (
-                    <div
-                      key={s.key}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 6,
-                        position: "relative",
-                        zIndex: 1,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: "50%",
-                          background: isCompleted ? "var(--primary)" : "white",
-                          color: isCompleted ? "white" : "var(--text-light)",
-                          border: `2px solid ${isCompleted ? "var(--primary)" : "var(--border)"}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          boxShadow: "var(--shadow-sm)",
-                        }}
-                      >
-                        <Icon size={18} />
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: isCompleted ? 700 : 500,
-                          color: isCompleted ? "var(--text-main)" : "var(--text-muted)",
-                        }}
-                      >
-                        {s.label}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
               {/* Quick Specs */}
               <div style={{ background: "#f8fafc", padding: "14px 18px", borderRadius: "var(--radius-md)", marginBottom: 20, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div>
@@ -290,28 +241,8 @@ export default function Track() {
                 </div>
               </div>
 
-              {/* Detailed Timeline */}
-              <div className="card-header" style={{ marginBottom: 12, marginTop: 10 }}>
-                <h3 className="card-title" style={{ fontSize: 16 }}>
-                  <Clock size={16} color="var(--primary)" />
-                  <span>Status Update History</span>
-                </h3>
-              </div>
-
-              <div className="timeline">
-                {(order.status_history || [])
-                  .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-                  .map((h) => (
-                    <div className="timeline-step" key={h.id}>
-                      <div className="timeline-dot" />
-                      <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
-                      <div className="timeline-time">
-                        <FormattedDate date={h.created_at} />
-                      </div>
-                      {h.message && <div className="timeline-msg">{h.message}</div>}
-                    </div>
-                  ))}
-              </div>
+              {/* Crazy Animated Live Timeline */}
+              <CrazyLiveTimeline order={order} />
             </div>
           </div>
         )}

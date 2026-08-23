@@ -16,6 +16,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import FormattedDate from "../../../components/FormattedDate";
+import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
 
 export default function VerifyBillPage() {
   const p = useParams();
@@ -125,29 +126,9 @@ export default function VerifyBillPage() {
           <VirtualDeliveryMap order={order} />
         </div>
 
-        {/* Status Timeline History */}
-        <div className="card no-print" style={{ marginTop: 20 }}>
-          <div className="card-header">
-            <h3 className="card-title" style={{ fontSize: 16 }}>
-              <Clock size={16} color="var(--primary)" />
-              <span>Official Status Verification Timeline</span>
-            </h3>
-          </div>
-
-          <div className="timeline">
-            {(order.status_history || [])
-              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-              .map((h) => (
-                <div className="timeline-step" key={h.id}>
-                  <div className="timeline-dot" />
-                  <div className="timeline-title">{h.status?.replaceAll("_", " ")}</div>
-                  <div className="timeline-time">
-                    <FormattedDate date={h.created_at} />
-                  </div>
-                  {h.message && <div className="timeline-msg">{h.message}</div>}
-                </div>
-              ))}
-          </div>
+        {/* Crazy Live Animated Timeline */}
+        <div className="no-print" style={{ marginTop: 24 }}>
+          <CrazyLiveTimeline order={order} />
         </div>
       </div>
     </main>
