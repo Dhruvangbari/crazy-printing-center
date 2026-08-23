@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Printer, Shield, Clock, Phone, MapPin } from "lucide-react";
+import { Printer } from "lucide-react";
 
 export default function Footer() {
   return (
-    <footer className="footer">
+    <footer className="footer" suppressHydrationWarning>
       <div className="footer-wrap">
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div className="brand-icon" style={{ width: 32, height: 32 }}>
@@ -23,7 +23,7 @@ export default function Footer() {
         </div>
 
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          © {new Date().getFullYear()} Crazy Printing Center. All rights reserved.
+          © 2026 Crazy Printing Center. All rights reserved.
         </div>
       </div>
     </footer>
