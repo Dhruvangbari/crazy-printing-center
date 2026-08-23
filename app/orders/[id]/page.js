@@ -33,6 +33,7 @@ import {
   Home
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
+import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 
 export default function Detail() {
   const p = useParams();
@@ -608,202 +609,31 @@ export default function Detail() {
       {/* Official Customer Bill / Tax Invoice Modal */}
       {showBillModal && (
         <div className="modal-backdrop" onClick={() => setShowBillModal(false)}>
-          <div className="modal-content" style={{ maxWidth: 680, padding: 32 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-              <div>
-                <h2 style={{ fontSize: 22, fontWeight: 900, color: "var(--primary)" }}>CRAZY PRINTING CENTER</h2>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                  Official Print Receipt & Tax Invoice
-                </p>
-              </div>
+          <div style={{ maxWidth: 840, width: "100%", maxHeight: "95vh", overflowY: "auto", position: "relative" }} onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowBillModal(false)}
+              className="no-print"
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 14,
+                zIndex: 10,
+                background: "white",
+                border: "1px solid var(--border)",
+                borderRadius: "50%",
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+              }}
+            >
+              <X size={18} />
+            </button>
 
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button onClick={handlePrint} className="btn btn-sm">
-                  <Printer size={14} />
-                  <span>Print</span>
-                </button>
-
-                <button
-                  onClick={() => setShowBillModal(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-light)", padding: 4 }}
-                >
-                  <X size={22} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ borderTop: "2px solid var(--border)", borderBottom: "2px solid var(--border)", padding: "16px 0", marginBottom: 20 }}>
-              <div className="row">
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                    INVOICE DETAILS
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>Bill #: BILL-{o.order_number}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    Date: <FormattedDate date={o.created_at} />
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    UPI ID: {shopUpi}
-                  </div>
-                  {o.upi_utr && (
-                    <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700 }}>
-                      UTR Ref: {o.upi_utr}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                    BILLED TO (CUSTOMER)
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>{o.customer_name || "Customer"}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📞 {o.customer_phone || "N/A"}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📍 {o.address || "Shop Counter Pickup"}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Itemized Table */}
-            <table className="table" style={{ marginBottom: 20 }}>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Rate</th>
-                  <th>Qty / Copies</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <div style={{ fontWeight: 700 }}>
-                      {o.paper_size} Document Printing ({o.color_mode === "COLOR" ? "Full Colour" : "B&W"})
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {o.page_count || 1} page(s) • {o.sides} sided • {o.paper_type} paper
-                    </div>
-                  </td>
-                  <td>₹{ratePerPage}.00 / pg</td>
-                  <td>{o.copies} copy(s) ({(o.page_count || 1) * o.copies} pages total)</td>
-                  <td style={{ fontWeight: 700 }}>₹{o.subtotal || o.total}</td>
-                </tr>
-
-                {o.binding_type && o.binding_type !== "NONE" && (
-                  <tr>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>Finishing & Binding ({o.binding_type})</div>
-                    </td>
-                    <td>Included</td>
-                    <td>{o.copies}</td>
-                    <td style={{ fontWeight: 700 }}>—</td>
-                  </tr>
-                )}
-
-                {o.priority === "EXPRESS" && (
-                  <tr>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>⚡ Express Priority Queue Rush Fee</div>
-                    </td>
-                    <td>₹20.00</td>
-                    <td>1</td>
-                    <td style={{ fontWeight: 700 }}>₹20.00</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            {/* Attached Documents & Payment Proof Summary in Invoice */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
-              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
-                  ATTACHED PRINT DOCUMENTS ({o.order_files?.length || 0})
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                  {o.order_files?.map((f) => (
-                    <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <FileText size={13} color="var(--primary)" />
-                      <span style={{ fontWeight: 600 }}>{f.original_name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
-                  PAYMENT PROOF & UTR
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-main)" }}>
-                  <div>UTR Ref: <b>{o.upi_utr || "Verified on Counter"}</b></div>
-                  {proofUrl && (
-                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                      <img
-                        src={proofUrl}
-                        alt="Payment Proof"
-                        style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }}
-                      />
-                      <a href={proofUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--primary)", fontWeight: 700 }}>
-                        View Full Screenshot ↗
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Bill Summary */}
-            <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>PAYMENT STATUS</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <CheckCircle2 size={16} color="var(--success)" />
-                  <span style={{ fontWeight: 800, fontSize: 14, color: "var(--success)" }}>
-                    {o.status === "DELIVERED" || isPaid ? "PAID & VERIFIED ✅" : "PAYMENT SUBMITTED"}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>GRAND TOTAL</div>
-                <div style={{ fontSize: 26, fontWeight: 900, color: "var(--primary)" }}>₹{o.total}.00</div>
-              </div>
-            </div>
-
-            {/* Invoice Action Bar */}
-            <div className="no-print" style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-              <button
-                type="button"
-                onClick={handleSendInvoiceEmail}
-                disabled={emailSending}
-                className="btn btn-secondary btn-sm"
-              >
-                <span>{emailSending ? "Sending Email..." : "📧 Send Official Bill to Email"}</span>
-              </button>
-
-              <a
-                href={directCustomerWhatsAppUrl || shareWhatsAppBillUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-whatsapp btn-sm"
-              >
-                <MessageCircle size={14} />
-                <span>WhatsApp Receipt</span>
-              </a>
-
-              <button onClick={handlePrint} className="btn btn-sm">
-                <Printer size={14} />
-                <span>Print / Save PDF</span>
-              </button>
-            </div>
-
-            {emailStatus && (
-              <div style={{ textAlign: "center", fontSize: 12, color: "var(--success)", fontWeight: 700, marginTop: 8 }}>
-                {emailStatus}
-              </div>
-            )}
-
-            <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "var(--text-light)" }}>
-              Thank you for printing with Crazy Printing Center! For questions, WhatsApp us at +91 9876543210.
-            </div>
+            <OfficialTaxInvoice order={o} proofUrl={proofUrl} />
           </div>
         </div>
       )}

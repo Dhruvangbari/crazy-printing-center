@@ -219,12 +219,16 @@ export default function Track() {
                 <div>
                   <b>Print Job:</b> {order.paper_size} • {order.color_mode} • {order.page_count || 1} pgs • {order.copies} copy(s)
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <div style={{ fontWeight: 800, color: "var(--primary)" }}>
                     Total: ₹{order.total} ({order.delivery_mode === "PICKUP" ? "Counter Pickup" : "Doorstep Delivery"})
                   </div>
-                  <Link href={`/orders/${order.id}`} className="btn btn-sm">
-                    <span>View Bill & Details</span>
+                  <Link href={`/verify/${order.id}`} className="btn btn-sm" style={{ background: "#0f172a" }}>
+                    <Receipt size={13} />
+                    <span>Verified Bill & QR</span>
+                  </Link>
+                  <Link href={`/orders/${order.id}`} className="btn btn-secondary btn-sm">
+                    <span>Manage Order</span>
                     <ArrowRight size={13} />
                   </Link>
                 </div>

@@ -36,6 +36,7 @@ import {
   ShieldAlert
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
+import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
 
 const STATUS_LIST = [
   { key: "ALL", label: "All Orders" },
@@ -61,6 +62,7 @@ export default function AdminDashboard() {
   const [updating, setUpdating] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
+  const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
 
   useEffect(() => {
     checkAdminAndFetch();
@@ -549,6 +551,16 @@ export default function AdminDashboard() {
 
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
+                  onClick={() => setInvoiceModalOrder(selectedOrder)}
+                  className="btn btn-sm"
+                  style={{ background: "#0f172a" }}
+                  title="View Official Tax Invoice with Scannable QR Code"
+                >
+                  <Receipt size={14} />
+                  <span>Tax Invoice & QR</span>
+                </button>
+
+                <button
                   onClick={handlePrintJobSheet}
                   className="btn btn-secondary btn-sm"
                   title="Print Machine Operator Job Sheet"
@@ -858,6 +870,37 @@ export default function AdminDashboard() {
               <X size={18} />
             </button>
             <img src={previewImage} alt="Payment Proof" style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain", borderRadius: 8 }} />
+          </div>
+        </div>
+      )}
+
+      {/* Official Tax Invoice & QR Scanner Modal */}
+      {invoiceModalOrder && (
+        <div className="modal-backdrop" onClick={() => setInvoiceModalOrder(null)}>
+          <div style={{ maxWidth: 840, width: "100%", maxHeight: "95vh", overflowY: "auto", position: "relative" }} onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setInvoiceModalOrder(null)}
+              className="no-print"
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 14,
+                zIndex: 10,
+                background: "white",
+                border: "1px solid var(--border)",
+                borderRadius: "50%",
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+              }}
+            >
+              <X size={18} />
+            </button>
+            <OfficialTaxInvoice order={invoiceModalOrder} />
           </div>
         </div>
       )}
