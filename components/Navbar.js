@@ -12,7 +12,9 @@ import {
   Search, 
   FileText, 
   LayoutDashboard,
-  Home
+  Home,
+  Menu,
+  X
 } from "lucide-react";
 
 export default function Navbar() {
@@ -21,6 +23,7 @@ export default function Navbar() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -64,10 +67,16 @@ export default function Navbar() {
     return () => subscription?.unsubscribe();
   }, []);
 
+  // Close mobile menu on page navigation
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   async function handleLogout() {
     await supabase().auth.signOut();
     setUser(null);
     setProfile(null);
+    setMobileMenuOpen(false);
     router.push("/login");
   }
 
@@ -83,7 +92,8 @@ export default function Navbar() {
           <span>Crazy Printing</span>
         </Link>
 
-        <nav className="nav-links">
+        {/* Desktop Navigation Links */}
+        <nav className="nav-links desktop-nav">
           <Link 
             href="/" 
             className={`nav-link ${pathname === "/" ? "active" : ""}`}
@@ -159,7 +169,94 @@ export default function Navbar() {
             <div style={{ width: 120, height: 32 }} />
           )}
         </nav>
+
+        {/* Mobile Hamburger Button */}
+        <button
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation menu"
+        >
+          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
       </div>
+
+      {/* Mobile Drawer Menu */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer">
+          <Link 
+            href="/" 
+            className={`mobile-nav-link ${pathname === "/" ? "active" : ""}`}
+          >
+            <Home size={18} />
+            <span>Home</span>
+          </Link>
+
+          <Link 
+            href="/order" 
+            className={`mobile-nav-link ${pathname === "/order" ? "active" : ""}`}
+          >
+            <PlusCircle size={18} />
+            <span>Order Print</span>
+          </Link>
+
+          <Link 
+            href="/track" 
+            className={`mobile-nav-link ${pathname === "/track" ? "active" : ""}`}
+          >
+            <Search size={18} />
+            <span>Track Order</span>
+          </Link>
+
+          {mounted && user && (
+            <Link 
+              href="/orders" 
+              className={`mobile-nav-link ${pathname === "/orders" ? "active" : ""}`}
+            >
+              <FileText size={18} />
+              <span>My Orders</span>
+            </Link>
+          )}
+
+          {mounted && isAdmin && (
+            <Link href="/admin" className="mobile-nav-link admin-link">
+              <ShieldCheck size={18} />
+              <span>Admin Panel</span>
+            </Link>
+          )}
+
+          {mounted && user && (
+            <Link 
+              href="/profile" 
+              className={`mobile-nav-link ${pathname === "/profile" ? "active" : ""}`}
+            >
+              <User size={18} />
+              <span>My Profile ({profile?.name || user.email?.split("@")[0]})</span>
+            </Link>
+          )}
+
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginTop: 8 }}>
+            {mounted && user ? (
+              <button 
+                onClick={handleLogout} 
+                className="btn btn-secondary btn-sm" 
+                style={{ width: "100%", justifyContent: "center" }}
+              >
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            ) : (
+              <div style={{ display: "flex", gap: 10 }}>
+                <Link href="/login" className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: "center" }}>
+                  Login
+                </Link>
+                <Link href="/register" className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }}>
+                  Register
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

@@ -330,6 +330,11 @@ export default function Detail() {
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "var(--text-muted)" }}>Document Pages:</span>
+                <b>{o.page_count || 1} page(s)</b>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-muted)" }}>Copies:</span>
                 <b>{o.copies} copy(s)</b>
               </div>
@@ -591,11 +596,11 @@ export default function Detail() {
                       {o.paper_size} Document Printing ({o.color_mode === "COLOR" ? "Full Colour" : "B&W"})
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {o.sides} sided • {o.paper_type} paper
+                      {o.page_count || 1} page(s) • {o.sides} sided • {o.paper_type} paper
                     </div>
                   </td>
-                  <td>₹{ratePerPage}.00</td>
-                  <td>{o.copies} copy(s)</td>
+                  <td>₹{ratePerPage}.00 / pg</td>
+                  <td>{o.copies} copy(s) ({(o.page_count || 1) * o.copies} pages total)</td>
                   <td style={{ fontWeight: 700 }}>₹{o.subtotal || o.total}</td>
                 </tr>
 

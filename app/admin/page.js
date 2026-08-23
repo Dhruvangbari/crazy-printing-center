@@ -454,7 +454,7 @@ export default function AdminDashboard() {
                           {o.paper_size} • {o.color_mode} • {o.sides}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                          {o.copies} copies • {o.paper_type}
+                          {o.page_count || 1} pgs • {o.copies} {o.copies === 1 ? "copy" : "copies"} • {o.paper_type}
                         </div>
                         {o.binding_type && o.binding_type !== "NONE" && (
                           <div style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginTop: 2 }}>
@@ -583,13 +583,13 @@ export default function AdminDashboard() {
                   {selectedOrder.paper_size} | {selectedOrder.color_mode}
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  {selectedOrder.sides} sided | {selectedOrder.paper_type} paper
+                  {selectedOrder.page_count || 1} page(s) | {selectedOrder.sides} sided | {selectedOrder.paper_type} paper
                 </div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                   Binding: <b>{selectedOrder.binding_type || "NONE"}</b>
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: "var(--primary)", marginTop: 4 }}>
-                  {selectedOrder.copies} Copies — Total ₹{selectedOrder.total}
+                  {selectedOrder.copies} Copies ({(selectedOrder.page_count || 1) * selectedOrder.copies} total pages) — Total ₹{selectedOrder.total}
                 </div>
                 {selectedOrder.notes && (
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, background: "white", padding: 6, borderRadius: 6 }}>

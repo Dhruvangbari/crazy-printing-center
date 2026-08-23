@@ -24,6 +24,7 @@ export default function Home() {
   const [calcColor, setCalcColor] = useState("BW");
   const [calcSides, setCalcSides] = useState("SINGLE");
   const [calcCopies, setCalcCopies] = useState(1);
+  const [calcPages, setCalcPages] = useState(1);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -68,7 +69,7 @@ export default function Home() {
   const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
   const baseRate = calcColor === "COLOR" ? 5 : 3;
   const sideMultiplier = calcSides === "DOUBLE" ? 0.9 : 1;
-  const estPrice = Math.max(5, Math.ceil(baseRate * (multipliers[calcSize] || 1) * sideMultiplier * calcCopies));
+  const estPrice = Math.max(5, Math.ceil(baseRate * (multipliers[calcSize] || 1) * sideMultiplier * calcCopies * calcPages));
 
   return (
     <main className="wrap">
@@ -134,13 +135,25 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="row">
+            <div className="row" style={{ marginBottom: 14 }}>
               <div className="field">
-                <label>Sides</label>
+                <label>Print Sides</label>
                 <select value={calcSides} onChange={(e) => setCalcSides(e.target.value)}>
                   <option value="SINGLE">Single Sided</option>
-                  <option value="DOUBLE">Double Sided (Discounted)</option>
+                  <option value="DOUBLE">Double Sided (10% Off)</option>
                 </select>
+              </div>
+
+              <div className="field">
+                <label>Document Pages</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={calcPages}
+                  onChange={(e) => setCalcPages(Math.max(1, parseInt(e.target.value) || 1))}
+                  placeholder="e.g. 10"
+                />
               </div>
 
               <div className="field">
@@ -158,8 +171,10 @@ export default function Home() {
 
           <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
             <div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>ESTIMATED TOTAL</div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>
+                ESTIMATED TOTAL ({calcPages} {calcPages === 1 ? "pg" : "pgs"} × {calcCopies} {calcCopies === 1 ? "copy" : "copies"})
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
             </div>
 
             <Link href="/order" className="btn btn-sm">
