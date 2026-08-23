@@ -28,7 +28,7 @@ import {
   LogIn
 } from "lucide-react";
 
-import { PDFDocument } from "pdf-lib";
+import { countDocumentPages } from "../../lib/pageCounter";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -53,35 +53,6 @@ function isAllowedPrintDocument(file) {
   if (file.type && (file.type.startsWith("audio/") || file.type.startsWith("video/"))) return false;
   
   return hasAllowedExt;
-}
-
-async function countPdfPages(file) {
-  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-    try {
-      const buffer = await file.arrayBuffer();
-      // Use PDFDocument to parse all modern compressed object streams and xref tables
-      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-      const count = pdfDoc.getPageCount();
-      if (count && count > 0) return count;
-    } catch (e) {
-      console.warn("pdf-lib parse note:", e.message);
-      try {
-        const buffer = await file.arrayBuffer();
-        const text = new TextDecoder("latin1").decode(buffer);
-        const pagesRegex = /\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/gi;
-        let maxCount = 0;
-        let m;
-        while ((m = pagesRegex.exec(text)) !== null) {
-          const val = parseInt(m[1], 10);
-          if (val > maxCount) maxCount = val;
-        }
-        if (maxCount > 0) return maxCount;
-        const pageMatches = text.match(/\/Type\s*\/Page\b/g);
-        if (pageMatches && pageMatches.length > 0) return pageMatches.length;
-      } catch (fallbackErr) {}
-    }
-  }
-  return 1;
 }
 
 export default function Order() {
@@ -289,7 +260,7 @@ export default function Order() {
 
     const processed = [];
     for (const f of validFiles) {
-      const detectedPages = await countPdfPages(f);
+      const detectedPages = await countDocumentPages(f);
       processed.push({
         file: f,
         name: f.name,
@@ -315,6 +286,7 @@ export default function Order() {
     if (e.target.files && e.target.files.length > 0) {
       addFiles(Array.from(e.target.files));
     }
+    e.target.value = "";
   }
 
   function updateFilePages(index, delta) {
@@ -691,22 +663,32 @@ export default function Order() {
 
                     {/* Page Count Counter Widget */}
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "white", padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "white", padding: "4px 8px", borderRadius: 8, border: "1px solid var(--border)" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>Pages:</span>
                         <button
                           type="button"
                           onClick={() => updateFilePages(index, -1)}
-                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer" }}
+                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" }}
+                          title="Decrease pages"
                         >
                           <Minus size={12} />
                         </button>
-                        <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: "center" }}>
-                          {file.pages || 1}
-                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="5000"
+                          value={file.pages || 1}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                            setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, pages: val } : f)));
+                          }}
+                          style={{ width: 45, height: 26, textAlign: "center", fontWeight: 800, padding: 0, border: "1px solid var(--border)", borderRadius: 4, fontSize: 13 }}
+                        />
                         <button
                           type="button"
                           onClick={() => updateFilePages(index, 1)}
-                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 22, height: 22, display: "grid", placeItems: "center", cursor: "pointer" }}
+                          style={{ background: "#f1f5f9", border: "none", borderRadius: 4, width: 24, height: 24, display: "grid", placeItems: "center", cursor: "pointer" }}
+                          title="Increase pages"
                         >
                           <Plus size={12} />
                         </button>
