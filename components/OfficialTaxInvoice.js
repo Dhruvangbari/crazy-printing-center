@@ -456,6 +456,22 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 640px) {
+          .tax-invoice-container {
+            border-radius: 12px;
+          }
+          .tax-invoice-toolbar {
+            flex-direction: column;
+            align-items: stretch !important;
+          }
+          .tax-invoice-toolbar .btn {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -293,11 +293,11 @@ export default function VirtualDeliveryMap({ order }) {
           >
             <MapPin size={20} />
           </div>
-          <div style={{ color: "white", fontSize: 12, fontWeight: 700, marginTop: 6, textShadow: "0 1px 4px black" }}>
+          <div style={{ color: "white", fontSize: 12, fontWeight: 700, marginTop: 6, textShadow: "0 1px 4px black", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {order.customer_name || "Customer"}
           </div>
-          <div style={{ color: "#94a3b8", fontSize: 10 }}>
-            {isDelivery ? "Delivery Destination" : "Pickup Counter"}
+          <div style={{ color: "#94a3b8", fontSize: 10, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {isDelivery ? "Destination" : "Pickup"}
           </div>
         </div>
       </div>

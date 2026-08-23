@@ -1012,10 +1012,10 @@ export default function Order() {
                 type="submit"
                 disabled={loading || files.length === 0}
                 className="btn btn-lg"
-                style={{ background: "#16a34a", color: "white", padding: "14px 28px", fontSize: 16, display: "inline-flex", alignItems: "center", gap: 8 }}
+                style={{ background: "#16a34a", color: "white", padding: "14px 24px", fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, flex: "1 1 300px" }}
               >
                 <MessageCircle size={20} />
-                <span>{loading ? "Creating Order & Bill..." : "Create Order & Send Advance Bill to WhatsApp"}</span>
+                <span>{loading ? "Creating Order & Bill..." : "Create Order & Send Advance Bill 📲"}</span>
                 <ArrowRight size={18} />
               </button>
             </div>

@@ -395,7 +395,7 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
         </div>
 
         {/* Section 3: Itemized Advance Quotation & UPI QR Code */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 20, background: "#f1f5f9", padding: 20, borderRadius: 14, border: "2px solid #e2e8f0", marginBottom: 24 }}>
+        <div className="advance-bill-summary-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 20, background: "#f1f5f9", padding: 20, borderRadius: 14, border: "2px solid #e2e8f0", marginBottom: 24 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", marginBottom: 8 }}>
               ITEMIZED ADVANCE BILL BREAKDOWN
@@ -513,6 +513,18 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
           </Link>
         </div>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 640px) {
+          .advance-bill-summary-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .no-print .btn {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
     </div>
   );
 }

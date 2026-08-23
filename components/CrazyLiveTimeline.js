@@ -280,7 +280,85 @@ export default function CrazyLiveTimeline({ order }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. DETAILED LIVE STATUS EVENT LOG */}
+      {/* 2. MOBILE CYBER VERTICAL STEPPER (Mobile <= 768px) */}
+      {/* ========================================================================= */}
+      <div className="mobile-cyber-stepper" style={{ margin: "20px 0 10px", position: "relative", zIndex: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {TIMELINE_STAGES.map((stage, idx) => {
+            const state = getStageState(stage.key);
+            const isDone = state === "completed";
+            const isActive = state === "active";
+            const Icon = stage.icon;
+
+            return (
+              <div
+                key={stage.key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  background: isActive ? "rgba(99, 102, 241, 0.2)" : isDone ? "rgba(16, 185, 129, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                  border: isActive ? "1px solid rgba(56, 189, 248, 0.5)" : isDone ? "1px solid rgba(16, 185, 129, 0.2)" : "1px solid rgba(255, 255, 255, 0.06)",
+                  boxShadow: isActive ? "0 0 18px rgba(56, 189, 248, 0.2)" : "none",
+                  position: "relative"
+                }}
+              >
+                {/* Stage Icon Orb */}
+                <div
+                  className={`crazy-node-orb ${isActive ? "crazy-active-pulse" : ""}`}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    background: isDone ? "#10b981" : isActive ? stage.gradient : "rgba(15, 23, 42, 0.9)",
+                    border: isActive ? "2px solid #ffffff" : isDone ? "2px solid #34d399" : "2px solid rgba(255, 255, 255, 0.2)",
+                    color: isDone || isActive ? "#ffffff" : "rgba(255, 255, 255, 0.4)",
+                    position: "relative"
+                  }}
+                >
+                  {isDone ? (
+                    <Check size={18} strokeWidth={3} />
+                  ) : (
+                    <Icon size={18} />
+                  )}
+                  {isActive && <div className="crazy-ripple-1" style={{ borderColor: stage.color }} />}
+                </div>
+
+                {/* Stage Info */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: isActive ? "#38bdf8" : isDone ? "#f8fafc" : "#94a3b8" }}>
+                      {stage.title}
+                    </div>
+                    {isActive && (
+                      <span style={{ fontSize: 9, fontWeight: 900, background: stage.gradient, color: "white", padding: "2px 8px", borderRadius: 999, letterSpacing: 0.5 }}>
+                        {stage.tag}
+                      </span>
+                    )}
+                    {isDone && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#10b981" }}>
+                        Done ✓
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: isActive ? "#cbd5e1" : "#64748b", marginTop: 2 }}>
+                    {stage.subtitle}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. DETAILED LIVE STATUS EVENT LOG */}
       {/* ========================================================================= */}
       <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255, 255, 255, 0.1)", position: "relative", zIndex: 2 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
@@ -344,7 +422,7 @@ export default function CrazyLiveTimeline({ order }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* CSS STYLES FOR CRAZY ANIMATIONS */}
+      {/* CSS STYLES FOR CRAZY ANIMATIONS & RESPONSIVE TOGGLES */}
       {/* ========================================================================= */}
       <style jsx>{`
         .crazy-laser-dot {
@@ -400,7 +478,7 @@ export default function CrazyLiveTimeline({ order }) {
 
         @keyframes orbFloat {
           0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-6px); }
+          50% { transform: translateY(-4px); }
         }
 
         .crazy-ripple-1, .crazy-ripple-2 {
@@ -438,10 +516,19 @@ export default function CrazyLiveTimeline({ order }) {
           box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
         }
 
+        .mobile-cyber-stepper {
+          display: none;
+        }
+        .desktop-cyber-pipeline {
+          display: block;
+        }
+
         @media (max-width: 768px) {
           .desktop-cyber-pipeline {
-            overflow-x: auto;
-            padding-bottom: 12px;
+            display: none !important;
+          }
+          .mobile-cyber-stepper {
+            display: block !important;
           }
         }
       `}</style>
