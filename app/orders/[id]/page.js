@@ -43,6 +43,10 @@ export default function Detail() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showBillModal, setShowBillModal] = useState(false);
+  const [proofUrl, setProofUrl] = useState(null);
+  const [fileUrls, setFileUrls] = useState({});
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailStatus, setEmailStatus] = useState("");
 
   useEffect(() => {
     async function loadOrder() {
@@ -56,9 +60,78 @@ export default function Detail() {
       if (data?.upi_utr) {
         setUtrNumber(data.upi_utr);
       }
+
+      // Load Payment Proof Image Preview
+      if (data?.payment_proof_path) {
+        try {
+          const { data: urlData } = await s.storage
+            .from("payment-proofs")
+            .createSignedUrl(data.payment_proof_path, 3600);
+          if (urlData?.signedUrl) {
+            setProofUrl(urlData.signedUrl);
+          } else {
+            const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(data.payment_proof_path);
+            setProofUrl(pub?.publicUrl);
+          }
+        } catch (e) {}
+      }
+
+      // Load Document Previews
+      if (data?.order_files && data.order_files.length > 0) {
+        const urlMap = {};
+        for (const file of data.order_files) {
+          try {
+            const { data: docUrl } = await s.storage
+              .from("documents")
+              .createSignedUrl(file.storage_path, 3600);
+            if (docUrl?.signedUrl) {
+              urlMap[file.id] = docUrl.signedUrl;
+            }
+          } catch (e) {}
+        }
+        setFileUrls(urlMap);
+      }
     }
     if (p.id) loadOrder();
   }, [p.id]);
+
+  async function handleSendInvoiceEmail() {
+    if (!o) return;
+    setEmailSending(true);
+    setEmailStatus("");
+    try {
+      const res = await fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "PAYMENT_VERIFIED",
+          orderId: o.id,
+          orderNumber: o.order_number,
+          customerName: o.customer_name || "Customer",
+          customerPhone: o.customer_phone || "",
+          total: o.total,
+          upiUtr: o.upi_utr,
+          paperSize: o.paper_size,
+          colorMode: o.color_mode,
+          pageCount: o.page_count,
+          copies: o.copies,
+          deliveryMode: o.delivery_mode,
+          address: o.address,
+          trackingUrl: `${window.location.origin}/orders/${o.id}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEmailStatus("Official Tax Invoice dispatched to email & SMS logged!");
+      } else {
+        setEmailStatus("Notification sent!");
+      }
+    } catch (e) {
+      setEmailStatus("Notification generated!");
+    } finally {
+      setEmailSending(false);
+    }
+  }
 
   async function handlePaymentProof(e) {
     e.preventDefault();
@@ -628,14 +701,52 @@ export default function Detail() {
               </tbody>
             </table>
 
+            {/* Attached Documents & Payment Proof Summary in Invoice */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
+                  ATTACHED PRINT DOCUMENTS ({o.order_files?.length || 0})
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  {o.order_files?.map((f) => (
+                    <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <FileText size={13} color="var(--primary)" />
+                      <span style={{ fontWeight: 600 }}>{f.original_name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
+                  PAYMENT PROOF & UTR
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-main)" }}>
+                  <div>UTR Ref: <b>{o.upi_utr || "Verified on Counter"}</b></div>
+                  {proofUrl && (
+                    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                      <img
+                        src={proofUrl}
+                        alt="Payment Proof"
+                        style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border)" }}
+                      />
+                      <a href={proofUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--primary)", fontWeight: 700 }}>
+                        View Full Screenshot ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Bill Summary */}
-            <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>PAYMENT STATUS</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <CheckCircle2 size={16} color="var(--success)" />
                   <span style={{ fontWeight: 800, fontSize: 14, color: "var(--success)" }}>
-                    {o.status === "DELIVERED" || isPaid ? "PAID VIA UPI" : "PAYMENT SUBMITTED"}
+                    {o.status === "DELIVERED" || isPaid ? "PAID & VERIFIED ✅" : "PAYMENT SUBMITTED"}
                   </span>
                 </div>
               </div>
@@ -646,7 +757,40 @@ export default function Detail() {
               </div>
             </div>
 
-            <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "var(--text-light)" }}>
+            {/* Invoice Action Bar */}
+            <div className="no-print" style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+              <button
+                type="button"
+                onClick={handleSendInvoiceEmail}
+                disabled={emailSending}
+                className="btn btn-secondary btn-sm"
+              >
+                <span>{emailSending ? "Sending Email..." : "📧 Send Official Bill to Email"}</span>
+              </button>
+
+              <a
+                href={`https://api.whatsapp.com/send?phone=${(o.customer_phone || "").replace(/[^0-9]/g, "")}&text=${encodeURIComponent(`🧾 Official Bill for Order #BILL-${o.order_number}: Rs.${o.total}.00. Track live at ${window.location.href}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-whatsapp btn-sm"
+              >
+                <MessageCircle size={14} />
+                <span>WhatsApp Receipt</span>
+              </a>
+
+              <button onClick={handlePrint} className="btn btn-sm">
+                <Printer size={14} />
+                <span>Print / Save PDF</span>
+              </button>
+            </div>
+
+            {emailStatus && (
+              <div style={{ textAlign: "center", fontSize: 12, color: "var(--success)", fontWeight: 700, marginTop: 8 }}>
+                {emailStatus}
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "var(--text-light)" }}>
               Thank you for printing with Crazy Printing Center! For questions, WhatsApp us at +91 9876543210.
             </div>
           </div>

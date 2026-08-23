@@ -168,6 +168,33 @@ export default function AdminDashboard() {
         message: message,
       });
 
+      // 3. Auto-Dispatch Email & SMS Bill when payment is verified
+      if (newStatus === "PAYMENT_VERIFIED") {
+        const targetOrder = (orders || []).find((o) => o.id === orderId) || selectedOrder;
+        if (targetOrder) {
+          fetch("/api/notify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "PAYMENT_VERIFIED",
+              orderId: targetOrder.id,
+              orderNumber: targetOrder.order_number,
+              customerName: targetOrder.customer_name || targetOrder.profiles?.name || "Customer",
+              customerPhone: targetOrder.customer_phone || targetOrder.profiles?.phone || "",
+              total: targetOrder.total,
+              upiUtr: targetOrder.upi_utr,
+              paperSize: targetOrder.paper_size,
+              colorMode: targetOrder.color_mode,
+              pageCount: targetOrder.page_count,
+              copies: targetOrder.copies,
+              deliveryMode: targetOrder.delivery_mode,
+              address: targetOrder.address,
+              trackingUrl: typeof window !== "undefined" ? `${window.location.origin}/orders/${targetOrder.id}` : "",
+            }),
+          }).catch((notifyErr) => console.warn("Notify API error:", notifyErr));
+        }
+      }
+
       setStatusMsg("");
       await fetchOrders();
     } catch (err) {
