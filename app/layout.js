@@ -1,1 +1,24 @@
-import "./globals.css";export const metadata={title:"Crazy Printing Center",description:"Upload, pay, print and track."};export default function RootLayout({children}){return <html><body>{children}</body></html>}
+import "./globals.css";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
+
+export const metadata = {
+  title: "Crazy Printing Center — Fast Online Document & Photo Printing",
+  description: "Upload your documents, choose print options, pay seamlessly via UPI, and track printing and delivery in real-time.",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
+      <body>
+        <Navbar />
+        {children}
+        <Footer />
+      </body>
+    </html>
+  );
+}
