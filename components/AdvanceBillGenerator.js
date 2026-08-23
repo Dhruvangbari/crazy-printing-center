@@ -20,8 +20,12 @@ import {
   ShieldCheck,
   Building2,
   Calendar,
-  Share2
+  Share2,
+  Download,
+  Loader2
 } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import { buildWhatsAppLink, openWhatsAppChat } from "../lib/whatsapp";
 
 const PAPER_SIZES = [
@@ -59,6 +63,8 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [advanceId, setAdvanceId] = useState("");
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const billSheetRef = React.useRef(null);
 
   useEffect(() => {
     setAdvanceId(`ADV-CPC-${Date.now().toString().slice(-6)}`);
@@ -71,6 +77,37 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
       } catch (e) {}
     }
   }, []);
+
+  async function handleDownloadPdf() {
+    if (!billSheetRef.current) return;
+    setGeneratingPdf(true);
+    try {
+      const element = billSheetRef.current;
+      const canvas = await html2canvas(element, {
+        scale: 2.2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+      pdf.save(`${advanceId}-quotation.pdf`);
+    } catch (err) {
+      console.error("Advance PDF Error:", err);
+      window.print();
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }
 
   // Calculation formulas
   const baseRate = colorMode === "COLOR" ? 5 : 3;
@@ -173,7 +210,7 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
       </div>
 
       {/* Main Advance Bill Body */}
-      <div style={{ background: "white", padding: 28, borderRadius: "0 0 16px 16px", border: "1px solid var(--border)", borderTop: "none", boxShadow: "0 10px 30px rgba(0,0,0,0.06)" }}>
+      <div ref={billSheetRef} style={{ background: "white", padding: 28, borderRadius: "0 0 16px 16px", border: "1px solid var(--border)", borderTop: "none", boxShadow: "0 10px 30px rgba(0,0,0,0.06)" }}>
         {/* Section 1: Customer Details */}
         <div style={{ marginBottom: 24, padding: 18, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
@@ -441,6 +478,18 @@ export default function AdvanceBillGenerator({ onConvertOrder }) {
             >
               {copied ? <Check size={16} color="var(--success)" /> : <Copy size={16} />}
               <span>{copied ? "Copied Quotation!" : "Copy Text"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={generatingPdf}
+              className="btn btn-secondary"
+              style={{ padding: "12px 18px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}
+              title="Download PDF document"
+            >
+              {generatingPdf ? <Loader2 size={16} className="spin-animation" /> : <Download size={16} />}
+              <span>{generatingPdf ? "Creating PDF..." : "Download PDF Bill"}</span>
             </button>
 
             <button
