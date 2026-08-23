@@ -66,7 +66,7 @@ export default function Home() {
 
   // Quick price estimator
   const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
-  const baseRate = calcColor === "COLOR" ? 5 : 1.5;
+  const baseRate = calcColor === "COLOR" ? 5 : 3;
   const sideMultiplier = calcSides === "DOUBLE" ? 0.9 : 1;
   const estPrice = Math.max(5, Math.ceil(baseRate * (multipliers[calcSize] || 1) * sideMultiplier * calcCopies));
 
@@ -128,7 +128,7 @@ export default function Home() {
               <div className="field">
                 <label>Colour Mode</label>
                 <select value={calcColor} onChange={(e) => setCalcColor(e.target.value)}>
-                  <option value="BW">Black & White (₹1.50/pg)</option>
+                  <option value="BW">Black & White (₹3.00/pg)</option>
                   <option value="COLOR">Full Colour (₹5.00/pg)</option>
                 </select>
               </div>

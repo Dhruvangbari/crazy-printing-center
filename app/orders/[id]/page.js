@@ -16,7 +16,8 @@ import {
   Layers, 
   Printer, 
   Copy, 
-  Check,
+  Check, 
+  X,
   AlertCircle,
   MessageCircle,
   Receipt,
@@ -24,7 +25,8 @@ import {
   Phone,
   MapPin,
   BookOpen,
-  Zap
+  Zap,
+  CheckCircle2
 } from "lucide-react";
 
 export default function Detail() {
@@ -35,6 +37,7 @@ export default function Detail() {
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showBillModal, setShowBillModal] = useState(false);
 
   useEffect(() => {
     async function loadOrder() {
@@ -120,7 +123,7 @@ export default function Detail() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handlePrintInvoice() {
+  function handlePrint() {
     window.print();
   }
 
@@ -154,6 +157,9 @@ export default function Detail() {
     `Hello Crazy Printing Center, I have a question regarding my Order #${o.order_number} (${o.customer_name || "Customer"}).`
   )}`;
 
+  // Rate per page
+  const ratePerPage = o.color_mode === "COLOR" ? 5 : 3;
+
   return (
     <main className="wrap">
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
@@ -180,14 +186,23 @@ export default function Detail() {
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button onClick={handlePrintInvoice} className="btn btn-secondary btn-sm">
+              <button 
+                onClick={() => setShowBillModal(true)} 
+                className="btn btn-sm"
+                style={{ background: "#0f172a" }}
+              >
                 <Receipt size={15} />
-                <span>Print Invoice</span>
+                <span>View Customer Bill</span>
+              </button>
+
+              <button onClick={handlePrint} className="btn btn-secondary btn-sm">
+                <Printer size={15} />
+                <span>Print Bill</span>
               </button>
 
               <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn btn-whatsapp btn-sm">
                 <MessageCircle size={15} />
-                <span>WhatsApp Support</span>
+                <span>WhatsApp</span>
               </a>
 
               <span className={`status-badge status-${o.status}`} style={{ fontSize: 14, padding: "6px 16px" }}>
@@ -250,7 +265,7 @@ export default function Detail() {
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-muted)" }}>Colour Mode:</span>
-                <b>{o.color_mode === "COLOR" ? "Full Colour" : "Black & White"}</b>
+                <b>{o.color_mode === "COLOR" ? "Full Colour (₹5.00/pg)" : "Black & White (₹3.00/pg)"}</b>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -429,6 +444,133 @@ export default function Detail() {
           </div>
         </div>
       </div>
+
+      {/* Official Customer Bill / Tax Invoice Modal */}
+      {showBillModal && (
+        <div className="modal-backdrop" onClick={() => setShowBillModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 680, padding: 32 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 22, fontWeight: 900, color: "var(--primary)" }}>CRAZY PRINTING CENTER</h2>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  Official Print Receipt & Tax Invoice
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={handlePrint} className="btn btn-sm">
+                  <Printer size={14} />
+                  <span>Print</span>
+                </button>
+
+                <button
+                  onClick={() => setShowBillModal(false)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-light)", padding: 4 }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ borderTop: "2px solid var(--border)", borderBottom: "2px solid var(--border)", padding: "16px 0", marginBottom: 20 }}>
+              <div className="row">
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                    INVOICE DETAILS
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>Bill #: BILL-{o.order_number}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    Date: <FormattedDate date={o.created_at} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    UPI ID: {shopUpi}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>
+                    BILLED TO (CUSTOMER)
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4 }}>{o.customer_name || "Customer"}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📞 {o.customer_phone || "N/A"}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>📍 {o.address || "Shop Counter Pickup"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Itemized Table */}
+            <table className="table" style={{ marginBottom: 20 }}>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Rate</th>
+                  <th>Qty / Copies</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style={{ fontWeight: 700 }}>
+                      {o.paper_size} Document Printing ({o.color_mode === "COLOR" ? "Full Colour" : "B&W"})
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {o.sides} sided • {o.paper_type} paper
+                    </div>
+                  </td>
+                  <td>₹{ratePerPage}.00</td>
+                  <td>{o.copies} copy(s)</td>
+                  <td style={{ fontWeight: 700 }}>₹{o.subtotal || o.total}</td>
+                </tr>
+
+                {o.binding_type && o.binding_type !== "NONE" && (
+                  <tr>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>Finishing & Binding ({o.binding_type})</div>
+                    </td>
+                    <td>Included</td>
+                    <td>{o.copies}</td>
+                    <td style={{ fontWeight: 700 }}>—</td>
+                  </tr>
+                )}
+
+                {o.priority === "EXPRESS" && (
+                  <tr>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>⚡ Express Priority Queue Rush Fee</div>
+                    </td>
+                    <td>₹20.00</td>
+                    <td>1</td>
+                    <td style={{ fontWeight: 700 }}>₹20.00</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Bill Summary */}
+            <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>PAYMENT STATUS</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                  <CheckCircle2 size={16} color="var(--success)" />
+                  <span style={{ fontWeight: 800, fontSize: 14, color: "var(--success)" }}>
+                    {o.status === "DELIVERED" || isPaid ? "PAID VIA UPI" : "PAYMENT RECORDED"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>GRAND TOTAL</div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: "var(--primary)" }}>₹{o.total}.00</div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "var(--text-light)" }}>
+              Thank you for printing with Crazy Printing Center! For questions, WhatsApp us at +91 9876543210.
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

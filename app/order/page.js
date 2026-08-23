@@ -101,7 +101,7 @@ export default function Order() {
         Custom: 1.5,
       }[paperSize] || 1;
 
-    let colorRate = colorMode === "COLOR" ? 5 : 1.5;
+    let colorRate = colorMode === "COLOR" ? 5 : 3;
     let sideDiscount = sides === "DOUBLE" ? 0.9 : 1;
     let paperTypeAdd = paperType === "GLOSSY" ? 3 : paperType === "PREMIUM" ? 1.5 : 0;
     let numCopies = Math.max(1, Number(copies) || 1);
@@ -427,7 +427,7 @@ export default function Order() {
               <div className="field">
                 <label>Colour Mode</label>
                 <select value={colorMode} onChange={(e) => setColorMode(e.target.value)}>
-                  <option value="BW">Black & White (₹1.50/pg)</option>
+                  <option value="BW">Black & White (₹3.00/pg)</option>
                   <option value="COLOR">Full Colour (₹5.00/pg)</option>
                 </select>
               </div>
