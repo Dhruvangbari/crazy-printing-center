@@ -31,7 +31,9 @@ import {
   ShieldCheck,
   ShieldAlert,
   Home,
-  RefreshCw
+  RefreshCw,
+  XCircle,
+  AlertTriangle
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
@@ -52,6 +54,52 @@ export default function Detail() {
   const [fileUrls, setFileUrls] = useState({});
   const [emailSending, setEmailSending] = useState(false);
   const [emailStatus, setEmailStatus] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("Uploaded wrong document / Need to change file");
+  const [cancelNotes, setCancelNotes] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+
+  async function handleCustomerCancel() {
+    if (!o) return;
+    setCancelling(true);
+    try {
+      const s = supabase();
+
+      // Check if order is already printing or finished
+      if (["PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED"].includes(o.status)) {
+        alert("Printing has already commenced on the production machine. Please contact store support on WhatsApp to request manual assistance.");
+        setCancelling(false);
+        return;
+      }
+
+      // Update order status to CANCELLED
+      const { error: orderErr } = await s
+        .from("orders")
+        .update({
+          status: "CANCELLED",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", o.id);
+
+      if (orderErr) throw orderErr;
+
+      // Add status history entry with reason
+      const detailedMessage = `Cancelled by Customer. Reason: ${cancelReason}${cancelNotes.trim() ? ` (Feedback: "${cancelNotes.trim()}")` : ""}`;
+      await s.from("status_history").insert({
+        order_id: o.id,
+        status: "CANCELLED",
+        message: detailedMessage,
+      });
+
+      setShowCancelModal(false);
+      setCancelNotes("");
+      await loadOrder(false);
+    } catch (err) {
+      alert("Failed to cancel order: " + err.message);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function loadOrder(isSilent = false) {
     if (!p.id) return;
@@ -369,6 +417,18 @@ export default function Detail() {
                 <span>Share on WhatsApp</span>
               </a>
 
+              {o.status !== "CANCELLED" && (
+                <button
+                  onClick={() => setShowCancelModal(true)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ borderColor: "#fecaca", color: "#b91c1c" }}
+                  title="Cancel this order"
+                >
+                  <XCircle size={15} color="#ef4444" />
+                  <span>Cancel Order</span>
+                </button>
+              )}
+
               <button onClick={handlePrint} className="btn btn-secondary btn-sm">
                 <Printer size={15} />
                 <span>Print Bill</span>
@@ -663,6 +723,150 @@ export default function Detail() {
             </button>
 
             <OfficialTaxInvoice order={o} proofUrl={proofUrl} />
+          </div>
+        </div>
+      )}
+
+      {/* Customer Cancellation & Reason Modal */}
+      {showCancelModal && (
+        <div className="modal-backdrop" onClick={() => setShowCancelModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 520, padding: "24px 24px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#fee2e2", color: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>Cancel Print Order</h3>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>Order #{o?.order_number}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowCancelModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* If Order is already in physical production */}
+            {["PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED"].includes(o?.status) ? (
+              <div style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "16px 18px", borderRadius: 12, color: "#92400e" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
+                  ⚠️ Production Already in Progress
+                </div>
+                <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+                  This order has already reached the <b>{o.status.replaceAll("_", " ")}</b> stage. Ink and paper materials have been consumed on our production machines.
+                </p>
+                <p style={{ fontSize: 12, marginTop: 8, color: "#78350f" }}>
+                  To request special cancellation or discuss a reprint, please message our store team directly on WhatsApp.
+                </p>
+
+                <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                  <a
+                    href={`https://wa.me/919876543210?text=${encodeURIComponent(`Hi, I need assistance cancelling Order #${o.order_number}. Current status: ${o.status}`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-whatsapp btn-sm"
+                    style={{ textDecoration: "none", flex: 1, justifyContent: "center" }}
+                  >
+                    <MessageCircle size={14} />
+                    <span>Contact WhatsApp Support</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelModal(false)}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ fontSize: 13, color: "#475569", marginBottom: 14, lineHeight: 1.5 }}>
+                  Please tell us why you would like to cancel your print job. Your feedback helps us improve our service:
+                </p>
+
+                {/* Pre-set Reasons Selection */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                  {[
+                    "Uploaded wrong document / Need to change file",
+                    "Incorrect print options (paper, color, or binding)",
+                    "Delivery time / ETA is too long",
+                    "Placed duplicate order by mistake",
+                    "Payment issue / Changed mind",
+                    "Other reason"
+                  ].map((r) => (
+                    <label
+                      key={r}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: cancelReason === r ? "2px solid #4f46e5" : "1px solid #e2e8f0",
+                        background: cancelReason === r ? "#eef2ff" : "#ffffff",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: cancelReason === r ? 700 : 500,
+                        color: cancelReason === r ? "#312e81" : "#334155",
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value={r}
+                        checked={cancelReason === r}
+                        onChange={() => setCancelReason(r)}
+                        style={{ accentColor: "#4f46e5" }}
+                      />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Optional Detailed Notes */}
+                <div className="field" style={{ marginBottom: 18 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                    Additional feedback or comments (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Provide any additional details..."
+                    value={cancelNotes}
+                    onChange={(e) => setCancelNotes(e.target.value)}
+                    style={{ fontSize: 13, width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelModal(false)}
+                    disabled={cancelling}
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                  >
+                    Keep Order
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCustomerCancel}
+                    disabled={cancelling}
+                    className="btn btn-danger"
+                    style={{ flex: 1.2, background: "#dc2626", color: "white" }}
+                  >
+                    {cancelling ? "Cancelling..." : "Confirm Cancellation ❌"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
