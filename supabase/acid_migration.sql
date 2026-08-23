@@ -1,11 +1,20 @@
--- ==========================================================
--- ACID TRANSACTIONS & ANTI-FRAUD PAYMENT MIGRATION
+-- ====================================================================
+-- CRAZY PRINTING CENTER: ENTERPRISE DATABASE ACID & SECURITY SCHEMA
 -- Run this in Supabase SQL Editor
--- ==========================================================
+-- ====================================================================
 
--- 1. Add UTR / Transaction Reference ID with UNIQUE constraint for anti-fraud
+-- 1. Ensure Columns Exist
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS customer_name text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS customer_phone text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS city text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS pincode text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS landmark text;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS binding_type text DEFAULT 'NONE';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS priority text DEFAULT 'STANDARD';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS page_count int DEFAULT 1;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS upi_utr text;
 
+-- 2. Anti-Fraud UTR Unique Constraint
 DO $$ BEGIN
   ALTER TABLE public.orders ADD CONSTRAINT unique_upi_utr UNIQUE (upi_utr);
 EXCEPTION
@@ -13,7 +22,19 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
--- 2. Consistency & Integrity Constraints
+-- 3. Enterprise ACID Data Integrity & Validation Constraints
+DO $$ BEGIN
+  ALTER TABLE public.orders ADD CONSTRAINT check_customer_name_valid CHECK (length(trim(customer_name)) >= 2);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public.orders ADD CONSTRAINT check_customer_phone_valid CHECK (length(trim(customer_phone)) >= 10);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 DO $$ BEGIN
   ALTER TABLE public.orders ADD CONSTRAINT check_order_total_positive CHECK (total >= 0);
 EXCEPTION
@@ -26,7 +47,13 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
--- 3. Atomic Order Creation Function (ACID: Atomicity + Isolation + Durability)
+DO $$ BEGIN
+  ALTER TABLE public.orders ADD CONSTRAINT check_order_pages_positive CHECK (page_count >= 1);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 4. Full ACID Stored Procedure: Atomic Profile Sync + Order Creation + File Records + History Log
 CREATE OR REPLACE FUNCTION public.create_order_atomic(
   p_user_id uuid,
   p_customer_name text,
@@ -43,6 +70,7 @@ CREATE OR REPLACE FUNCTION public.create_order_atomic(
   p_copies int,
   p_binding_type text,
   p_priority text,
+  p_page_count int,
   p_notes text,
   p_subtotal numeric,
   p_total numeric,
@@ -54,21 +82,56 @@ AS $$
 DECLARE
   v_order public.orders;
   v_file jsonb;
+  v_clean_name text;
+  v_clean_phone text;
+  v_pages int;
 BEGIN
-  -- Insert into orders table
+  -- Strict Input Sanitization & Validation (ACID Consistency)
+  v_clean_name := trim(p_customer_name);
+  v_clean_phone := trim(p_customer_phone);
+  v_pages := COALESCE(p_page_count, 1);
+
+  IF length(v_clean_name) < 2 THEN
+    RAISE EXCEPTION 'Validation Failed: Customer Name must be at least 2 characters.';
+  END IF;
+
+  IF length(v_clean_phone) < 10 THEN
+    RAISE EXCEPTION 'Validation Failed: Contact Phone must be a valid 10-digit number.';
+  END IF;
+
+  IF p_copies < 1 THEN
+    RAISE EXCEPTION 'Validation Failed: Number of copies must be at least 1.';
+  END IF;
+
+  IF v_pages < 1 THEN
+    v_pages := 1;
+  END IF;
+
+  -- 1. Atomically Upsert Profile if user_id is provided
+  IF p_user_id IS NOT NULL THEN
+    INSERT INTO public.profiles (id, name, phone, updated_at)
+    VALUES (p_user_id, v_clean_name, v_clean_phone, now())
+    ON CONFLICT (id) DO UPDATE
+    SET 
+      name = EXCLUDED.name,
+      phone = EXCLUDED.phone,
+      updated_at = now();
+  END IF;
+
+  -- 2. Atomically Insert Order
   INSERT INTO public.orders (
     user_id, customer_name, customer_phone, delivery_mode,
     address, city, pincode, landmark, paper_size,
     color_mode, sides, paper_type, copies, binding_type,
-    priority, notes, subtotal, total, status
+    priority, page_count, notes, subtotal, total, status
   ) VALUES (
-    p_user_id, p_customer_name, p_customer_phone, p_delivery_mode,
+    p_user_id, v_clean_name, v_clean_phone, p_delivery_mode,
     p_address, p_city, p_pincode, p_landmark, p_paper_size,
     p_color_mode, p_sides, p_paper_type, p_copies, p_binding_type,
-    p_priority, p_notes, p_subtotal, p_total, 'ORDER_RECEIVED'
+    p_priority, v_pages, p_notes, p_subtotal, p_total, 'ORDER_RECEIVED'
   ) RETURNING * INTO v_order;
 
-  -- Insert all attached document records atomically
+  -- 3. Atomically Insert Document Files
   IF p_files IS NOT NULL AND jsonb_array_length(p_files) > 0 THEN
     FOR v_file IN SELECT * FROM jsonb_array_elements(p_files)
     LOOP
@@ -84,23 +147,23 @@ BEGIN
     END LOOP;
   END IF;
 
-  -- Atomically record status history log
+  -- 4. Atomically Log Initial Status Event
   INSERT INTO public.status_history (
     order_id, status, message
   ) VALUES (
     v_order.id,
     'ORDER_RECEIVED',
-    'Order created successfully. Specifications: ' || p_paper_size || ', ' || p_color_mode || ', ' || p_copies || ' copy(s).'
+    'Order created successfully for ' || v_clean_name || ' (' || v_clean_phone || '). Specs: ' || p_paper_size || ', ' || p_color_mode || ', ' || v_pages || ' page(s), ' || p_copies || ' copy(s).'
   );
 
   RETURN v_order;
 EXCEPTION
   WHEN OTHERS THEN
-    RAISE EXCEPTION 'Atomic order transaction failed: %', SQLERRM;
+    RAISE EXCEPTION 'Atomic order creation failed: %', SQLERRM;
 END;
 $$;
 
--- 4. Atomic Payment Submission with Anti-Fraud UTR Verification
+-- 5. Full ACID Payment Submission Procedure with Anti-Fraud UTR Detection
 CREATE OR REPLACE FUNCTION public.submit_payment_atomic(
   p_order_id uuid,
   p_utr text,
@@ -115,17 +178,15 @@ DECLARE
 BEGIN
   v_clean_utr := trim(p_utr);
 
-  -- Validate 12-digit format
   IF length(v_clean_utr) < 8 THEN
-    RAISE EXCEPTION 'Invalid UTR: Transaction reference must be at least 8 to 12 digits.';
+    RAISE EXCEPTION 'Validation Failed: 12-digit transaction UTR reference must be at least 8 to 16 digits.';
   END IF;
 
-  -- Anti-Fraud Check: Disallow reuse of the same UTR across multiple orders
+  -- Anti-Fraud Check: Disallow duplicate UTR
   IF EXISTS (SELECT 1 FROM public.orders WHERE upi_utr = v_clean_utr AND id != p_order_id) THEN
-    RAISE EXCEPTION 'Fraud Alert: This 12-digit transaction UTR was already submitted for another order. Each payment reference can only be used once.';
+    RAISE EXCEPTION 'Security Alert: This transaction UTR was already submitted for another order. Each payment reference can only be used once.';
   END IF;
 
-  -- Atomically update order status and record UTR
   UPDATE public.orders
   SET 
     upi_utr = v_clean_utr,
@@ -139,19 +200,18 @@ BEGIN
     RAISE EXCEPTION 'Order not found with ID: %', p_order_id;
   END IF;
 
-  -- Atomically log status history
   INSERT INTO public.status_history (
     order_id, status, message
   ) VALUES (
     p_order_id,
     'PAYMENT_SUBMITTED',
-    'Customer submitted payment proof with 12-digit UTR: ' || v_clean_utr || '. Awaiting shop verification.'
+    'Payment submitted with 12-digit UTR: ' || v_clean_utr || '. Awaiting shop verification.'
   );
 
   RETURN v_order;
 END;
 $$;
 
--- Refresh permissions
+-- Grant Permissions
 GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
 GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, anon, authenticated, service_role;

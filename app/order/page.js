@@ -28,6 +28,8 @@ import {
   LogIn
 } from "lucide-react";
 
+import { PDFDocument } from "pdf-lib";
+
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
   { id: "STAPLE", label: "Corner Staple", desc: "Top-left metal staple", price: 5 },
@@ -57,33 +59,26 @@ async function countPdfPages(file) {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
     try {
       const buffer = await file.arrayBuffer();
-      const text = new TextDecoder("latin1").decode(buffer);
-
-      // Method 1: Pages catalog /Count N
-      const pagesRegex = /\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/gi;
-      let maxCount = 0;
-      let m;
-      while ((m = pagesRegex.exec(text)) !== null) {
-        const val = parseInt(m[1], 10);
-        if (val > maxCount) maxCount = val;
-      }
-      if (maxCount > 0) return maxCount;
-
-      // Method 2: Any /Count N
-      const countRegex = /\/Count\s+(\d+)/gi;
-      while ((m = countRegex.exec(text)) !== null) {
-        const val = parseInt(m[1], 10);
-        if (val > maxCount) maxCount = val;
-      }
-      if (maxCount > 0) return maxCount;
-
-      // Method 3: Count /Type /Page
-      const pageMatches = text.match(/\/Type\s*\/Page\b/g);
-      if (pageMatches && pageMatches.length > 0) {
-        return pageMatches.length;
-      }
+      // Use PDFDocument to parse all modern compressed object streams and xref tables
+      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+      const count = pdfDoc.getPageCount();
+      if (count && count > 0) return count;
     } catch (e) {
-      console.warn("Failed to auto-detect PDF page count:", e);
+      console.warn("pdf-lib parse note:", e.message);
+      try {
+        const buffer = await file.arrayBuffer();
+        const text = new TextDecoder("latin1").decode(buffer);
+        const pagesRegex = /\/Type\s*\/Pages[^>]*?\/Count\s+(\d+)/gi;
+        let maxCount = 0;
+        let m;
+        while ((m = pagesRegex.exec(text)) !== null) {
+          const val = parseInt(m[1], 10);
+          if (val > maxCount) maxCount = val;
+        }
+        if (maxCount > 0) return maxCount;
+        const pageMatches = text.match(/\/Type\s*\/Page\b/g);
+        if (pageMatches && pageMatches.length > 0) return pageMatches.length;
+      } catch (fallbackErr) {}
     }
   }
   return 1;
@@ -463,6 +458,7 @@ export default function Order() {
         p_copies: Number(copies) || 1,
         p_binding_type: bindingType,
         p_priority: priority,
+        p_page_count: totalPages,
         p_notes: notes.trim() || null,
         p_subtotal: printCost,
         p_total: totalPrice,
