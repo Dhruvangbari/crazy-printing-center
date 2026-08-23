@@ -23,6 +23,7 @@ import {
   Home,
   Plus,
   Minus,
+  CheckCircle2,
   Lock,
   LogIn
 } from "lucide-react";
@@ -35,6 +36,22 @@ const BINDING_OPTIONS = [
   { id: "HARD_BOUND", label: "Hard Bound", desc: "Golden embossed hard book", price: 150 },
   { id: "LAMINATION", label: "Lamination", desc: "Glossy waterproof pouch", price: 15 },
 ];
+
+const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".jpg", ".jpeg", ".png", ".webp"];
+
+function isAllowedPrintDocument(file) {
+  const name = (file.name || "").toLowerCase();
+  const hasAllowedExt = ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
+  
+  // Explicitly block media / audio / video / binary / archive files
+  const blockedExt = [".mp3", ".mp4", ".wav", ".mkv", ".avi", ".mov", ".m4a", ".aac", ".exe", ".zip", ".rar", ".apk", ".tar", ".gz", ".flac", ".ogg", ".webm"];
+  const isBlocked = blockedExt.some((ext) => name.endsWith(ext));
+  
+  if (isBlocked) return false;
+  if (file.type && (file.type.startsWith("audio/") || file.type.startsWith("video/"))) return false;
+  
+  return hasAllowedExt;
+}
 
 async function countPdfPages(file) {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
@@ -79,7 +96,7 @@ export default function Order() {
   const [dragActive, setDragActive] = useState(false);
   const [detectingPages, setDetectingPages] = useState(false);
   
-  // Customer & Delivery info
+  // Customer & Delivery info (Permanently saved in localStorage)
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("PICKUP");
@@ -107,33 +124,84 @@ export default function Order() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // 1. Auto-load saved user session and auto-load saved address data
   useEffect(() => {
-    async function loadUserData() {
-      const s = supabase();
-      const { data: { user } } = await s.auth.getUser();
-      setUser(user);
-      setAuthChecked(true);
+    // Load cached customer address from localStorage immediately
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem("cpc_saved_customer_data") || "{}");
+        if (saved.name) setCustomerName((prev) => prev || saved.name);
+        if (saved.phone) setCustomerPhone((prev) => prev || saved.phone);
+        if (saved.address) setAddress((prev) => prev || saved.address);
+        if (saved.city) setCity((prev) => prev || saved.city);
+        if (saved.pincode) setPincode((prev) => prev || saved.pincode);
+        if (saved.landmark) setLandmark((prev) => prev || saved.landmark);
+      } catch (e) {}
+    }
 
-      if (user) {
+    const s = supabase();
+
+    async function syncProfile(u) {
+      if (!u) return;
+      setUser(u);
+      try {
         const { data: profile } = await s
           .from("profiles")
           .select("*")
-          .eq("id", user.id)
+          .eq("id", u.id)
           .single();
         if (profile) {
-          setCustomerName(profile.name || "");
-          setCustomerPhone(profile.phone || "");
+          if (profile.name) setCustomerName(profile.name);
+          if (profile.phone) setCustomerPhone(profile.phone);
         } else {
-          setCustomerName(user.user_metadata?.name || user.email?.split("@")[0] || "");
-          setCustomerPhone(user.user_metadata?.phone || "");
+          const defaultName = u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split("@")[0] || "";
+          setCustomerName((prev) => prev || defaultName);
+          setCustomerPhone((prev) => prev || u.user_metadata?.phone || "");
         }
+      } catch (e) {
+        console.error(e);
       }
     }
-    loadUserData();
+
+    // Get current session from localStorage
+    s.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        syncProfile(session.user);
+      }
+    });
+
+    // Listen for auth state changes
+    const { data: { subscription } } = s.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        syncProfile(session.user);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
+
+  // Save customer details to localStorage on change so they never have to type it again
+  function saveCustomerData(name, phone, addr, ct, pin, lm) {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(
+          "cpc_saved_customer_data",
+          JSON.stringify({
+            name: name ?? customerName,
+            phone: phone ?? customerPhone,
+            address: addr ?? address,
+            city: ct ?? city,
+            pincode: pin ?? pincode,
+            landmark: lm ?? landmark,
+          })
+        );
+      } catch (e) {}
+    }
+  }
 
   async function handleGoogleLogin() {
     setGoogleLoading(true);
@@ -196,22 +264,6 @@ export default function Order() {
     } else if (e.type === "dragleave") {
       setDragActive(false);
     }
-  }
-
-  const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".jpg", ".jpeg", ".png", ".webp"];
-
-  function isAllowedPrintDocument(file) {
-    const name = (file.name || "").toLowerCase();
-    const hasAllowedExt = ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
-    
-    // Explicitly block media / audio / video / binary / archive files
-    const blockedExt = [".mp3", ".mp4", ".wav", ".mkv", ".avi", ".mov", ".m4a", ".aac", ".exe", ".zip", ".rar", ".apk", ".tar", ".gz", ".flac", ".ogg", ".webm"];
-    const isBlocked = blockedExt.some((ext) => name.endsWith(ext));
-    
-    if (isBlocked) return false;
-    if (file.type && (file.type.startsWith("audio/") || file.type.startsWith("video/"))) return false;
-    
-    return hasAllowedExt;
   }
 
   async function addFiles(fileList) {
@@ -293,11 +345,17 @@ export default function Order() {
 
     try {
       const s = supabase();
-      const { data: { user }, error: userError } = await s.auth.getUser();
+      
+      // Auto-get authenticated user or current session
+      let currentUser = user;
+      if (!currentUser) {
+        const { data: { session } } = await s.auth.getSession();
+        currentUser = session?.user || null;
+      }
 
-      if (userError || !user) {
-        setErr("Please log in first to submit an order.");
-        router.push("/login");
+      if (!currentUser) {
+        setErr("Please sign in with Google or Email once to place your order.");
+        setLoading(false);
         return;
       }
 
@@ -325,10 +383,13 @@ export default function Order() {
         return;
       }
 
+      // Persist details locally so customer never needs to re-enter
+      saveCustomerData();
+
       // Update profile info
       await s.from("profiles").upsert(
         {
-          id: user.id,
+          id: currentUser.id,
           name: customerName.trim(),
           phone: customerPhone.trim(),
         },
@@ -341,7 +402,7 @@ export default function Order() {
         : "Shop Counter Pickup";
 
       const orderPayload = {
-        user_id: user.id,
+        user_id: currentUser.id,
         customer_name: customerName.trim(),
         customer_phone: customerPhone.trim(),
         delivery_mode: deliveryMode,
@@ -369,7 +430,7 @@ export default function Order() {
 
       for (const f of files) {
         const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${user.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
+        const path = `${currentUser.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
 
         let u = await s.storage.from("documents").upload(path, f.file);
         if (u.error) {
@@ -387,7 +448,7 @@ export default function Order() {
       // 1. Try atomic ACID procedure
       let order = null;
       const { data: atomicOrder, error: atomicErr } = await s.rpc("create_order_atomic", {
-        p_user_id: user.id,
+        p_user_id: currentUser.id,
         p_customer_name: customerName.trim(),
         p_customer_phone: customerPhone.trim(),
         p_delivery_mode: deliveryMode,
@@ -447,69 +508,6 @@ export default function Order() {
     }
   }
 
-  if (authChecked && !user) {
-    return (
-      <main className="wrap">
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
-          <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
-            <Home size={15} />
-            <span>Home</span>
-          </Link>
-          <span style={{ color: "var(--border)" }}>/</span>
-          <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>New Print Order</span>
-        </div>
-
-        <div className="card" style={{ maxWidth: 520, margin: "40px auto", padding: "40px 32px", textAlign: "center" }}>
-          <div style={{ width: 68, height: 68, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary)", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
-            <Lock size={32} />
-          </div>
-
-          <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 10 }}>Please Sign In to Place Order</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
-            Sign in with your Google account or email to upload documents, configure print jobs, and track your orders in real-time.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={googleLoading}
-            className="btn btn-google"
-            style={{ width: "100%", marginBottom: 16, padding: "12px 20px" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>{googleLoading ? "Connecting with Google..." : "Continue with Google"}</span>
-          </button>
-
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", fontSize: 13 }}>
-            <Link href="/login" className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-              Sign In with Email
-            </Link>
-            <Link href="/register" className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-              Create Account
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <main className="wrap">
       {/* Navigation Breadcrumb */}
@@ -523,11 +521,64 @@ export default function Order() {
       </div>
 
       <div style={{ maxWidth: 840, margin: "0 auto 40px" }}>
-        <div style={{ marginBottom: 28, textAlign: "center" }}>
+        <div style={{ marginBottom: 24, textAlign: "center" }}>
           <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.5 }}>Create New Print Order</h1>
           <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 4 }}>
             Upload your documents, customize paper and binding, and get instant price calculation
           </p>
+        </div>
+
+        {/* Auth status indicator / Quick Google Login banner */}
+        <div style={{ marginBottom: 20 }}>
+          {user ? (
+            <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "10px 16px", borderRadius: "var(--radius-md)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#065f46", fontWeight: 700 }}>
+                <CheckCircle2 size={18} color="#059669" />
+                <span>Signed In as: <b>{customerName || user.email}</b> ({user.email})</span>
+              </div>
+              <span style={{ fontSize: 11, background: "#059669", color: "white", padding: "2px 8px", borderRadius: 999, fontWeight: 800 }}>
+                SAVED ACCOUNT
+              </span>
+            </div>
+          ) : (
+            <div style={{ background: "#f8fafc", border: "1px solid var(--border)", padding: "14px 18px", borderRadius: "var(--radius-md)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text-main)" }}>
+                  Have an account? Sign in once to keep your orders saved
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  1-Click Google Sign-In saves your profile and contact address forever.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={googleLoading}
+                className="btn btn-google btn-sm"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{googleLoading ? "Connecting..." : "Sign in with Google"}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {err && (
@@ -554,7 +605,10 @@ export default function Order() {
                   type="text"
                   placeholder="e.g., Dhruvang Bari"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    saveCustomerData(e.target.value);
+                  }}
                   required
                 />
               </div>
@@ -565,7 +619,10 @@ export default function Order() {
                   type="tel"
                   placeholder="+91 9876543210"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    saveCustomerData(null, e.target.value);
+                  }}
                   required
                 />
               </div>
@@ -596,13 +653,13 @@ export default function Order() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.webp"
                 onChange={handleFileSelect}
                 style={{ display: "none" }}
               />
               <UploadCloud className="dropzone-icon" />
               <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-main)", marginBottom: 4 }}>
-                {detectingPages ? "Analyzing PDF page counts..." : "Click to browse or drag & drop files here"}
+                {detectingPages ? "Analyzing document pages..." : "Click to browse or drag & drop files here"}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                 PDF, Word (DOCX), PowerPoint, and Images accepted. (Audio/Video MP3/MP4 strictly blocked)
@@ -814,7 +871,10 @@ export default function Order() {
                   <textarea
                     placeholder="e.g., Flat 402, Sunshine Heights, Main Road"
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => {
+                      setAddress(e.target.value);
+                      saveCustomerData(null, null, e.target.value);
+                    }}
                     rows={2}
                     required
                   />
@@ -827,7 +887,10 @@ export default function Order() {
                       type="text"
                       placeholder="e.g., Near City Hospital"
                       value={landmark}
-                      onChange={(e) => setLandmark(e.target.value)}
+                      onChange={(e) => {
+                        setLandmark(e.target.value);
+                        saveCustomerData(null, null, null, null, null, e.target.value);
+                      }}
                     />
                   </div>
 
@@ -837,7 +900,10 @@ export default function Order() {
                       type="text"
                       placeholder="e.g., Pune"
                       value={city}
-                      onChange={(e) => setCity(e.target.value)}
+                      onChange={(e) => {
+                        setCity(e.target.value);
+                        saveCustomerData(null, null, null, e.target.value);
+                      }}
                     />
                   </div>
 
@@ -847,7 +913,10 @@ export default function Order() {
                       type="text"
                       placeholder="e.g., 411001"
                       value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
+                      onChange={(e) => {
+                        setPincode(e.target.value);
+                        saveCustomerData(null, null, null, null, e.target.value);
+                      }}
                     />
                   </div>
                 </div>
