@@ -2,6 +2,7 @@ import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import WebNotificationListener from "../components/WebNotificationListener";
+import BetaTestingNotice from "../components/BetaTestingNotice";
 
 export const metadata = {
   title: "DHRUVANG CRAZY PRINTING CENTER — Fast Online Document & Xerox Printing",
@@ -19,6 +20,7 @@ export default function RootLayout({ children }) {
         <Navbar />
         {children}
         <Footer />
+        <BetaTestingNotice />
         <WebNotificationListener />
       </body>
     </html>

@@ -1384,3 +1384,229 @@ input:focus, select:focus, textarea:focus {
   font-weight: 700;
   color: #e2e8f0;
 }
+
+/* =========================================================
+   BETA TESTING POPUP & FLOATING FEEDBACK TRIGGER STYLES
+   ========================================================= */
+
+.beta-floating-trigger {
+  position: fixed;
+  bottom: 80px;
+  left: 20px;
+  z-index: 990;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(12px);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.beta-floating-trigger:hover {
+  background: #0f172a;
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.beta-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #facc15;
+  box-shadow: 0 0 10px #facc15;
+  animation: pulse 2s infinite;
+}
+
+.beta-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.beta-modal-card {
+  background: #ffffff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 540px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.beta-modal-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.beta-icon-badge {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4f46e5, #06b6d4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+}
+
+.beta-badge-pill {
+  background: rgba(250, 204, 21, 0.18);
+  color: #fef08a;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.beta-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.beta-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.beta-modal-body {
+  padding: 22px 24px;
+}
+
+.beta-alert-box {
+  background: #fefce8;
+  border: 1px solid #fef08a;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.beta-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.beta-contact-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+}
+
+.beta-contact-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.beta-wa {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+.beta-wa:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.beta-call {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.beta-call:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.beta-email {
+  background: #faf5ff;
+  color: #7e22ce;
+  border-color: #e9d5ff;
+}
+
+.beta-email:hover {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+}
+
+.beta-modal-footer {
+  padding: 16px 24px;
+  background: #f8fafc;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .beta-floating-trigger {
+    bottom: 74px;
+    left: 14px;
+    font-size: 11px;
+    padding: 6px 12px;
+  }
+  .beta-modal-card {
+    max-width: 95vw;
+  }
+  .beta-contact-grid {
+    grid-template-columns: 1fr;
+  }
+}
