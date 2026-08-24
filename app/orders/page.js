@@ -14,8 +14,10 @@ import {
   RefreshCw,
   Receipt,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Zap
 } from "lucide-react";
+import { calculateOrderPriority } from "../../lib/aiOrderAgent";
 
 export default function Orders() {
   const router = useRouter();
@@ -196,6 +198,16 @@ export default function Orders() {
                       <span className={`status-badge status-${o.status}`}>
                         {o.status?.replaceAll("_", " ")}
                       </span>
+                      {(() => {
+                        const p = calculateOrderPriority(o);
+                        if (["DELIVERED", "CANCELLED"].includes(o.status)) return null;
+                        return (
+                          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 3 }}>
+                            <Clock size={10} color="var(--primary)" />
+                            <span>Queue: ~{p.estMinutes}m ({p.level})</span>
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     <td>

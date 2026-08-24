@@ -488,6 +488,18 @@ export default function Order() {
         }
       } catch (e) {}
 
+      // Trigger AI Order Agent to alert Admin of incoming print job
+      try {
+        fetch("/api/ai/notify-admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: order.id,
+            orderData: order
+          })
+        }).catch(() => {});
+      } catch (e) {}
+
       router.push(`/orders/${order.id}`);
     } catch (unexpected) {
       setErr(unexpected.message || "An unexpected error occurred.");

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
 import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
+import { calculateOrderPriority, generateAiAdminPaymentAlert } from "../../lib/aiOrderAgent";
 
 const STATUS_LIST = [
   { key: "ALL", label: "All Orders" },
@@ -51,6 +52,13 @@ const STATUS_LIST = [
   { key: "CANCELLED", label: "Cancelled" },
 ];
 
+const SORT_OPTIONS = [
+  { key: "AI_PRIORITY", label: "🤖 AI Smart Priority (Highest First)" },
+  { key: "NEWEST", label: "⏱️ Newest First" },
+  { key: "VALUE", label: "💰 Highest Total First" },
+  { key: "PAGES", label: "📄 Quickest (Fewest Pages)" },
+];
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -59,7 +67,9 @@ export default function AdminDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [sortBy, setSortBy] = useState("AI_PRIORITY");
   const [updating, setUpdating] = useState(false);
+  const [aiProcessingId, setAiProcessingId] = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
@@ -287,8 +297,121 @@ export default function AdminDashboard() {
     window.print();
   }
 
+  // 1-Click AI One-Tap Verify & Start Printing Action
+  async function handleAiVerifyAndPrint(order) {
+    if (!order) return;
+    setAiProcessingId(order.id);
+    try {
+      const res = await fetch("/api/ai/auto-pilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "VERIFY_AND_PRINT",
+          orderId: order.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert("AI Action Failed: " + (data.error || "Unknown error"));
+        return;
+      }
+
+      // Auto-dispatch customer payment receipt notification
+      try {
+        fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.order_number,
+            customerName: order.customer_name || order.profiles?.name,
+            customerEmail: order.profiles?.email,
+            customerPhone: order.customer_phone || order.profiles?.phone,
+            total: order.total,
+            upiUtr: order.upi_utr,
+            paperSize: order.paper_size,
+            colorMode: order.color_mode,
+            pageCount: order.page_count,
+            copies: order.copies,
+            deliveryMode: order.delivery_mode,
+            address: order.address,
+            trackingUrl: typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : "",
+          }),
+        }).catch(() => {});
+      } catch (e) {}
+
+      await fetchOrders(true);
+      if (selectedOrder?.id === order.id) {
+        setSelectedOrder((prev) => ({ ...prev, status: "PRINTING" }));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setAiProcessingId(null);
+    }
+  }
+
+  // AI 1-Click Mark Ready / Dispatch
+  async function handleAiMarkReady(order) {
+    if (!order) return;
+    setAiProcessingId(order.id);
+    try {
+      const res = await fetch("/api/ai/auto-pilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "MARK_READY",
+          orderId: order.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert("AI Action Failed: " + (data.error || "Unknown error"));
+        return;
+      }
+      await fetchOrders(true);
+      if (selectedOrder?.id === order.id) {
+        setSelectedOrder((prev) => ({ ...prev, status: data.newStatus }));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setAiProcessingId(null);
+    }
+  }
+
+  // 1-Click AI Batch Process All Pending Payments
+  async function handleAiBatchProcessPending() {
+    const pendingOrders = orders.filter((o) => ["PAYMENT_SUBMITTED", "ORDER_RECEIVED"].includes(o.status));
+    if (pendingOrders.length === 0) {
+      alert("No pending payment orders found to auto-process.");
+      return;
+    }
+
+    if (!confirm(`🤖 AI Auto-Pilot: Verify and start printing for ${pendingOrders.length} pending order(s)?`)) {
+      return;
+    }
+
+    setRefreshing(true);
+    for (const ord of pendingOrders) {
+      await handleAiVerifyAndPrint(ord);
+    }
+    await fetchOrders(true);
+  }
+
+  function handleSendAiWhatsAppAlert(order) {
+    const alertText = generateAiAdminPaymentAlert(order);
+    openWhatsAppChat("8857871669", alertText);
+  }
+
+  // Calculate AI Priority on all orders
+  const scoredOrders = orders.map((o) => ({
+    ...o,
+    aiPriority: calculateOrderPriority(o),
+  }));
+
   // Filtered orders
-  const filteredOrders = orders.filter((o) => {
+  const filteredOrders = scoredOrders.filter((o) => {
     const matchesStatus = statusFilter === "ALL" || o.status === statusFilter;
     const q = search.toLowerCase();
     const matchesSearch =
@@ -302,11 +425,34 @@ export default function AdminDashboard() {
     return matchesStatus && matchesSearch;
   });
 
-  // Calculate KPIs
+  // Sort orders based on chosen sort option
+  filteredOrders.sort((a, b) => {
+    if (sortBy === "AI_PRIORITY") {
+      return b.aiPriority.score - a.aiPriority.score;
+    }
+    if (sortBy === "NEWEST") {
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    }
+    if (sortBy === "VALUE") {
+      return (Number(b.total) || 0) - (Number(a.total) || 0);
+    }
+    if (sortBy === "PAGES") {
+      const aPages = (Number(a.page_count) || 1) * (Number(a.copies) || 1);
+      const bPages = (Number(b.page_count) || 1) * (Number(b.copies) || 1);
+      return aPages - bPages;
+    }
+    return 0;
+  });
+
+  // Calculate KPIs & AI Insights
   const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
   const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length;
   const inProgressCount = orders.filter((o) => ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(o.status)).length;
   const readyCount = orders.filter((o) => o.status === "READY" || o.status === "OUT_FOR_DELIVERY").length;
+  const urgentAiCount = scoredOrders.filter((o) => o.aiPriority.level === "URGENT" && !["DELIVERED", "CANCELLED"].includes(o.status)).length;
+  const totalEstQueueTime = scoredOrders
+    .filter((o) => ["PAYMENT_SUBMITTED", "PAYMENT_VERIFIED", "PRINTING"].includes(o.status))
+    .reduce((sum, o) => sum + (o.aiPriority.estMinutes || 3), 0);
 
   if (loading) {
     return (
@@ -427,11 +573,50 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Search & Status Filters */}
+      {/* AI Print Dispatcher & Copilot Banner */}
+      <div className="card no-print" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", padding: "20px 24px", marginBottom: 24, border: "1px solid rgba(255,255,255,0.12)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <Zap size={18} color="#facc15" />
+              <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: -0.2 }}>AI Print Dispatcher & Queue Copilot</span>
+              {urgentAiCount > 0 && (
+                <span style={{ background: "#dc2626", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
+                  {urgentAiCount} URGENT
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 13, color: "#cbd5e1", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span>⏱️ Active Print Queue: <b>~{totalEstQueueTime} mins</b></span>
+              <span>•</span>
+              <span>💳 Awaiting Payment Review: <b>{pendingPaymentCount}</b></span>
+              <span>•</span>
+              <span>🖨️ In Production: <b>{inProgressCount}</b></span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {pendingPaymentCount > 0 && (
+              <button
+                onClick={handleAiBatchProcessPending}
+                disabled={refreshing}
+                className="btn btn-sm"
+                style={{ background: "linear-gradient(135deg, #4f46e5, #06b6d4)", fontWeight: 800, border: "none", boxShadow: "0 2px 10px rgba(79, 70, 229, 0.4)" }}
+                title="AI Auto-Verify all pending payments and queue them for printing"
+              >
+                <Zap size={14} />
+                <span>AI Auto-Verify & Queue ({pendingPaymentCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Search, Status & AI Sort Filters */}
       <div className="card no-print" style={{ marginBottom: 24, padding: "18px 20px" }}>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
           {/* Search bar */}
-          <div style={{ position: "relative", minWidth: 280, flex: 1 }}>
+          <div style={{ position: "relative", minWidth: 260, flex: 1 }}>
             <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
             <input
               type="text"
@@ -451,9 +636,33 @@ export default function AdminDashboard() {
             />
           </div>
 
+          {/* Sort By Dropdown */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: "9px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--primary)",
+                background: "var(--primary-light)",
+              }}
+            >
+              {SORT_OPTIONS.map((so) => (
+                <option key={so.key} value={so.key}>
+                  {so.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Status Filter Dropdown */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Filter size={16} color="var(--text-muted)" />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Filter size={15} color="var(--text-muted)" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -461,7 +670,7 @@ export default function AdminDashboard() {
                 padding: "9px 14px",
                 border: "1px solid var(--border)",
                 borderRadius: "var(--radius-md)",
-                fontSize: 14,
+                fontSize: 13.5,
                 fontWeight: 600,
                 color: "var(--text-main)",
                 background: "white",
@@ -483,6 +692,7 @@ export default function AdminDashboard() {
           <table className="table">
             <thead>
               <tr>
+                <th>AI Priority</th>
                 <th>Order Number</th>
                 <th>Recipient / Customer</th>
                 <th>Print Specifications</th>
@@ -495,23 +705,52 @@ export default function AdminDashboard() {
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
+                  <td colSpan="8" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
                     No orders found matching your criteria.
                   </td>
                 </tr>
               ) : (
                 filteredOrders.map((o) => {
                   const waLink = getCustomerWhatsAppLink(o);
+                  const p = o.aiPriority;
+                  const isProcessing = aiProcessingId === o.id;
+
                   return (
                     <tr key={o.id}>
+                      {/* AI Priority Column */}
+                      <td>
+                        <div 
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 11,
+                            fontWeight: 900,
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            color: p.color,
+                            background: p.bg,
+                            border: `1px solid ${p.border}`
+                          }}
+                          title={`Score: ${p.score}/100 • ${p.reason}`}
+                        >
+                          <span>{p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
+                          <span>{p.level} ({p.score})</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 3 }}>
+                          <Clock size={11} />
+                          <span>~{p.estMinutes}m print</span>
+                        </div>
+                      </td>
+
                       <td>
                         <div style={{ fontWeight: 800, color: "var(--text-main)" }}>{o.order_number}</div>
                         <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
                           <FormattedDate date={o.created_at} />
                         </div>
-                        {o.priority === "EXPRESS" && (
-                          <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, background: "#fef3c7", color: "#b45309", padding: "2px 6px", borderRadius: 4, marginTop: 4 }}>
-                            ⚡ EXPRESS
+                        {o.priority === "URGENT" && (
+                          <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "1px 6px", borderRadius: 4, marginTop: 4 }}>
+                            ⚡ VIP URGENT
                           </span>
                         )}
                       </td>
@@ -521,17 +760,28 @@ export default function AdminDashboard() {
                         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                           📞 {o.customer_phone || o.profiles?.phone || "No phone"}
                         </div>
-                        {waLink && (
-                          <a
-                            href={waLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#16a34a", fontWeight: 700, marginTop: 4 }}
+                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                          {waLink && (
+                            <a
+                              href={waLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#16a34a", fontWeight: 700 }}
+                            >
+                              <MessageCircle size={12} />
+                              <span>Customer</span>
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSendAiWhatsAppAlert(o)}
+                            style={{ background: "none", border: "none", color: "var(--primary)", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
+                            title="Send AI Alert to Admin WhatsApp"
                           >
-                            <MessageCircle size={12} />
-                            <span>WhatsApp</span>
-                          </a>
-                        )}
+                            <Zap size={11} />
+                            <span>AI Alert</span>
+                          </button>
+                        </div>
                       </td>
 
                       <td>
@@ -570,14 +820,42 @@ export default function AdminDashboard() {
                       </td>
 
                       <td>
-                        <button
-                          onClick={() => setSelectedOrder(o)}
-                          className="btn btn-sm"
-                          style={{ padding: "6px 14px" }}
-                        >
-                          <Eye size={14} />
-                          <span>Process</span>
-                        </button>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(o.status) && (
+                            <button
+                              disabled={isProcessing}
+                              onClick={() => handleAiVerifyAndPrint(o)}
+                              className="btn btn-sm"
+                              style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 800 }}
+                              title="1-Click AI Verify Payment & Queue Print"
+                            >
+                              <Zap size={12} />
+                              <span>{isProcessing ? "Verifying..." : "AI Verify & Print"}</span>
+                            </button>
+                          )}
+
+                          {o.status === "PRINTING" && (
+                            <button
+                              disabled={isProcessing}
+                              onClick={() => handleAiMarkReady(o)}
+                              className="btn btn-sm btn-success"
+                              style={{ padding: "5px 10px", fontSize: 11, fontWeight: 800 }}
+                              title="Mark order ready and notify customer"
+                            >
+                              <Check size={12} />
+                              <span>{isProcessing ? "Updating..." : "AI Mark Ready"}</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => setSelectedOrder(o)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: "5px 10px", fontSize: 11 }}
+                          >
+                            <Eye size={12} />
+                            <span>Details</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -693,6 +971,67 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            {/* AI Order Inspector & Priority Panel */}
+            {(() => {
+              const p = selectedOrder.aiPriority || calculateOrderPriority(selectedOrder);
+              const isProcessing = aiProcessingId === selectedOrder.id;
+              return (
+                <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: "var(--radius-md)", background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", border: "1px solid rgba(255,255,255,0.15)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Zap size={16} color="#facc15" />
+                      <span style={{ fontWeight: 900, fontSize: 14 }}>AI Order Inspector & Queue Predictor</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: p.bg, color: p.color, border: `1px solid ${p.border}`, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 }}>
+                      <span>{p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
+                      <span>Priority: {p.level} ({p.score}/100)</span>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5, marginBottom: 12 }}>
+                    ⏱️ <b>Estimated Print Duration:</b> ~{p.estMinutes} mins • 💡 <b>AI Reasoning:</b> {p.reason}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
+                      <button
+                        disabled={isProcessing}
+                        onClick={() => handleAiVerifyAndPrint(selectedOrder)}
+                        className="btn btn-sm"
+                        style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", fontWeight: 800, border: "none" }}
+                      >
+                        <Zap size={13} />
+                        <span>{isProcessing ? "Processing..." : "⚡ AI Verify Payment & Start Printing"}</span>
+                      </button>
+                    )}
+
+                    {selectedOrder.status === "PRINTING" && (
+                      <button
+                        disabled={isProcessing}
+                        onClick={() => handleAiMarkReady(selectedOrder)}
+                        className="btn btn-sm btn-success"
+                        style={{ fontWeight: 800 }}
+                      >
+                        <Check size={13} />
+                        <span>{isProcessing ? "Updating..." : "🤖 AI Mark Ready & Alert Customer"}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendAiWhatsAppAlert(selectedOrder)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "white", borderColor: "rgba(255,255,255,0.25)", fontSize: 11 }}
+                      title="Resend structured AI alert to Store Admin WhatsApp"
+                    >
+                      <MessageCircle size={13} color="#22c55e" />
+                      <span>Send AI Alert to Admin WhatsApp</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Uploaded Documents List */}
             <div style={{ marginBottom: 20 }}>

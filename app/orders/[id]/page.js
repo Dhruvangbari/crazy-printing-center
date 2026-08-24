@@ -280,8 +280,25 @@ export default function Detail() {
         });
       }
 
-      setMsg("Payment submitted with verified UTR! Verification is in progress.");
-      setTimeout(() => location.reload(), 1200);
+      // Trigger AI Order Agent to notify Admin directly via WhatsApp / Email
+      try {
+        fetch("/api/ai/notify-admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: p.id,
+            orderData: {
+              ...p,
+              upi_utr: cleanUtr,
+              payment_proof_path: path,
+              status: "PAYMENT_SUBMITTED"
+            }
+          })
+        }).catch(() => {});
+      } catch (e) {}
+
+      setMsg("🤖 AI Inspector: Payment submitted with 12-digit UTR! Admin notified to verify and begin laser printing.");
+      setTimeout(() => location.reload(), 1500);
     } catch (err) {
       setMsg(err.message || "Failed to submit payment proof");
       setLoading(false);
