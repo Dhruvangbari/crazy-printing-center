@@ -47,12 +47,21 @@ export default function AuthCallback() {
             { onConflict: "id" }
           );
 
-          // Check role
+          // Check role or direct Dhruvang email
+          const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
+
           const { data: profile } = await s
             .from("profiles")
             .select("role")
             .eq("id", user.id)
             .single();
+
+          if (isDhruvang && profile?.role !== "ADMIN") {
+            await s.from("profiles").upsert(
+              { id: user.id, role: "ADMIN" },
+              { onConflict: "id" }
+            );
+          }
 
           const returnUrl = typeof window !== "undefined" ? localStorage.getItem("cpc_auth_return") : null;
           if (typeof window !== "undefined") {
@@ -60,7 +69,7 @@ export default function AuthCallback() {
             localStorage.removeItem("cpc_auth_origin");
           }
 
-          if (profile?.role === "ADMIN") {
+          if (isDhruvang || profile?.role === "ADMIN") {
             window.location.href = "/admin";
           } else if (returnUrl) {
             window.location.href = returnUrl;

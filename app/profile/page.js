@@ -124,7 +124,10 @@ export default function ProfilePage() {
     );
   }
 
-  const isAdmin = profile?.role === "ADMIN";
+  const isAdmin = Boolean(
+    (user?.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com") ||
+    profile?.role === "ADMIN"
+  );
 
   return (
     <main className="wrap">

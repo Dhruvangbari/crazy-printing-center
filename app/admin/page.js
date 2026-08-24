@@ -111,17 +111,29 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Verify Admin role
+      // Verify Admin role or direct Dhruvang email
+      const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
+
       const { data: profile } = await s
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .single();
 
-      if (profile?.role !== "ADMIN") {
+      const hasAdminRole = profile?.role === "ADMIN" || isDhruvang;
+
+      if (!hasAdminRole) {
         setIsAdmin(false);
         setLoading(false);
+        router.push("/orders");
         return;
+      }
+
+      if (isDhruvang && profile?.role !== "ADMIN") {
+        await s.from("profiles").upsert(
+          { id: user.id, role: "ADMIN" },
+          { onConflict: "id" }
+        );
       }
 
       setIsAdmin(true);

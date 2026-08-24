@@ -17,8 +17,11 @@ import {
   CheckCircle,
   Search,
   MessageCircle,
-  User,
-  Phone
+  Headphones,
+  Phone,
+  HelpCircle,
+  Zap,
+  Receipt
 } from "lucide-react";
 import { openWhatsAppChat } from "../lib/whatsapp";
 
@@ -91,13 +94,22 @@ export default function Home() {
             { onConflict: "id" }
           );
 
+          const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
+
           const { data: prof } = await s
             .from("profiles")
             .select("role")
             .eq("id", user.id)
             .single();
 
-          if (prof?.role === "ADMIN") {
+          if (isDhruvang && prof?.role !== "ADMIN") {
+            await s.from("profiles").upsert(
+              { id: user.id, role: "ADMIN" },
+              { onConflict: "id" }
+            );
+          }
+
+          if (isDhruvang || prof?.role === "ADMIN") {
             router.push("/admin");
           } else {
             router.push("/orders");
@@ -107,7 +119,7 @@ export default function Home() {
     }
   }, [router]);
 
-  // Quick price estimator
+  // Quick price estimator calculation
   const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
   const baseRate = calcColor === "COLOR" ? 5 : 3;
   const sideMultiplier = calcSides === "DOUBLE" ? 0.9 : 1;
@@ -115,12 +127,12 @@ export default function Home() {
 
   return (
     <main className="wrap">
-      {/* Hero Section */}
+      {/* Elevated Hero Section */}
       <section className="hero">
         <div className="hero-content">
           <div className="hero-badge">
-            <Sparkles size={14} />
-            <span>Smart Online Printing Service</span>
+            <span className="live-dot" style={{ width: 8, height: 8, borderRadius: "50%", background: "#38bdf8", display: "inline-block", boxShadow: "0 0 10px #38bdf8" }}></span>
+            <span>Laser-Fast Online Xerox & Printing Service</span>
           </div>
 
           <h1>
@@ -128,7 +140,7 @@ export default function Home() {
           </h1>
 
           <p>
-            Upload documents, customize print specifications, pay seamlessly via UPI, and track your print job live from submission to delivery.
+            Upload documents in seconds, customize print specifications, pay seamlessly via UPI, and track your print job live from laser printing to zero-wait counter pickup or doorstep delivery.
           </p>
 
           <div className="hero-actions">
@@ -141,12 +153,38 @@ export default function Home() {
               <Search size={18} />
               <span>Track Order</span>
             </Link>
+
+            <Link href="/customer-service" className="btn btn-secondary btn-lg" style={{ background: "rgba(22, 163, 74, 0.2)", color: "#a7f3d0", borderColor: "rgba(167, 243, 208, 0.3)" }}>
+              <Headphones size={18} />
+              <span>24/7 Helpline</span>
+            </Link>
+          </div>
+
+          {/* Hero Trust Badges Row */}
+          <div className="hero-badges-row">
+            <div className="hero-stat-pill">
+              <Zap size={14} color="#facc15" />
+              <span>5-Min Fast Turnaround</span>
+            </div>
+            <div className="hero-stat-pill">
+              <ShieldCheck size={14} color="#4ade80" />
+              <span>100% 1200 DPI Quality</span>
+            </div>
+            <div className="hero-stat-pill">
+              <CreditCard size={14} color="#38bdf8" />
+              <span>Zero-Fee UPI Instant Pay</span>
+            </div>
+            <div className="hero-stat-pill">
+              <Truck size={14} color="#c084fc" />
+              <span>Doorstep & Store Pickup</span>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Interactive Price Estimator & Quick Info */}
+      {/* Interactive Price Estimator & Why Choose Us */}
       <div className="row" style={{ marginBottom: 36, alignItems: "stretch" }}>
+        {/* Instant Price Calculator */}
         <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
           <div>
             <div className="card-header">
@@ -154,17 +192,19 @@ export default function Home() {
                 <Sparkles size={20} color="var(--primary)" />
                 <span>Instant Price Calculator</span>
               </h2>
-              <span className="status-badge status-READY">Best Rates</span>
+              <span className="status-badge status-READY" style={{ background: "#ecfdf5", color: "#16a34a", fontWeight: 800 }}>
+                Transparent Pricing
+              </span>
             </div>
 
             <div className="row" style={{ marginBottom: 14 }}>
               <div className="field">
                 <label>Paper Size</label>
                 <select value={calcSize} onChange={(e) => setCalcSize(e.target.value)}>
-                  <option value="A4">A4 (Standard)</option>
-                  <option value="A5">A5 (Booklet)</option>
-                  <option value="A3">A3 (Poster / Drawing)</option>
-                  <option value="Legal">Legal (Official)</option>
+                  <option value="A4">A4 (Standard Document)</option>
+                  <option value="A5">A5 (Booklet / Memo)</option>
+                  <option value="A3">A3 (Poster / Drawing Sheet)</option>
+                  <option value="Legal">Legal (Official Stamp)</option>
                 </select>
               </div>
 
@@ -172,7 +212,7 @@ export default function Home() {
                 <label>Colour Mode</label>
                 <select value={calcColor} onChange={(e) => setCalcColor(e.target.value)}>
                   <option value="BW">Black & White (₹3.00/pg)</option>
-                  <option value="COLOR">Full Colour (₹5.00/pg)</option>
+                  <option value="COLOR">Full High-Res Colour (₹5.00/pg)</option>
                 </select>
               </div>
             </div>
@@ -182,7 +222,7 @@ export default function Home() {
                 <label>Print Sides</label>
                 <select value={calcSides} onChange={(e) => setCalcSides(e.target.value)}>
                   <option value="SINGLE">Single Sided</option>
-                  <option value="DOUBLE">Double Sided (10% Off)</option>
+                  <option value="DOUBLE">Double Sided (10% Discount)</option>
                 </select>
               </div>
 
@@ -211,9 +251,9 @@ export default function Home() {
             </div>
 
             {/* Advance WhatsApp Quotation Input Row */}
-            <div style={{ background: "#f1f5f9", padding: "12px 16px", borderRadius: "var(--radius-md)", marginTop: 10, border: "1px dashed var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <MessageCircle size={14} />
+            <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "var(--radius-md)", marginTop: 10, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                <MessageCircle size={14} color="#16a34a" />
                 <span>Instant WhatsApp Advance Bill Delivery</span>
               </div>
               <div className="row" style={{ marginBottom: 0 }}>
@@ -241,12 +281,12 @@ export default function Home() {
             </div>
           </div>
 
-          <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
+          <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 16, border: "1px solid var(--border)" }}>
             <div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 800, letterSpacing: 0.3 }}>
                 ESTIMATED TOTAL ({calcPages} {calcPages === 1 ? "pg" : "pgs"} × {calcCopies} {calcCopies === 1 ? "copy" : "copies"})
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
+              <div style={{ fontSize: 30, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
             </div>
 
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -257,7 +297,7 @@ export default function Home() {
                 title="Send official advance bill quotation directly to WhatsApp"
               >
                 <MessageCircle size={15} />
-                <span>Send Advance Bill to WhatsApp</span>
+                <span>Send to WhatsApp</span>
               </button>
 
               <Link href="/order" className="btn btn-sm">
@@ -269,34 +309,80 @@ export default function Home() {
         </div>
 
         {/* Why Choose Us */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 16 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 800 }}>Why Dhruvang Crazy Printing Center?</h2>
+        <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 20 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 900, letterSpacing: -0.3 }}>Why Dhruvang Crazy Printing Center?</h2>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <CheckCircle size={20} color="var(--success)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#ecfdf5", color: "#16a34a", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Printer size={18} />
+            </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>High-Speed Laser Printing</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Ultra crisp 1200 DPI prints on 75 to 100 GSM premium bond paper.</div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>High-Speed Laser Printing</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Ultra crisp 1200 DPI prints on 75 to 100 GSM premium imported bond paper.</div>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <CheckCircle size={20} color="var(--success)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff", color: "var(--primary)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <CreditCard size={18} />
+            </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>UPI QR Instant Payments</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Pay via Google Pay, PhonePe, Paytm or any UPI app with instant proof upload.</div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Instant UPI QR Verification</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Pay with Google Pay, PhonePe, or Paytm with instant payment screenshot check.</div>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <CheckCircle size={20} color="var(--success)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#faf5ff", color: "#9333ea", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Truck size={18} />
+            </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Flexible Pickup & Delivery</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Zero waiting time counter pickup or fast doorstep delivery.</div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Zero-Wait Counter & Doorstep Pickup</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Grab your finished prints instantly at our counter or get express home delivery.</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#ecfeff", color: "#0891b2", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Headphones size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>Dedicated Support & Helpline</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Have custom requirements? Call or WhatsApp our helpline directly at <b>8857871669</b>.</div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Prominent Customer Service & Helpline Callout Banner */}
+      <section className="card" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", padding: "28px 32px", marginBottom: 36, border: "1px solid rgba(255,255,255,0.1)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
+          <div style={{ maxWidth: 620 }}>
+            <div className="brand-badge" style={{ background: "rgba(16, 185, 129, 0.2)", color: "#a7f3d0", borderColor: "rgba(167, 243, 208, 0.3)", marginBottom: 10 }}>
+              <Headphones size={13} />
+              <span>Direct Customer Support Desk</span>
+            </div>
+            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>
+              Need Assistance with your Print Job or Bill?
+            </h3>
+            <p style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.5 }}>
+              Our customer service team is ready to help you with order status, bill generation, custom booklet bindings, or urgent print requests.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a href="tel:8857871669" className="btn btn-success" style={{ fontWeight: 800 }}>
+              <Phone size={16} />
+              <span>Call Helpline: 8857871669</span>
+            </a>
+
+            <Link href="/customer-service" className="btn btn-secondary" style={{ background: "rgba(255,255,255,0.12)", color: "white", borderColor: "rgba(255,255,255,0.25)" }}>
+              <HelpCircle size={16} />
+              <span>Customer Service Hub</span>
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {/* Feature Highlights Grid */}
       <div className="grid">
@@ -305,7 +391,7 @@ export default function Home() {
             <FileText size={24} />
           </div>
           <h3 className="feature-title">Any Document Format</h3>
-          <p className="feature-desc">Upload PDF, Word (DOC/DOCX), PowerPoint (PPT/PPTX), JPG, PNG, and high-res scans.</p>
+          <p className="feature-desc">Upload PDF, Word (DOC/DOCX), PowerPoint (PPT/PPTX), JPG, PNG, and high-res scanned notes.</p>
         </div>
 
         <div className="feature-card">
@@ -313,7 +399,7 @@ export default function Home() {
             <Layers size={24} />
           </div>
           <h3 className="feature-title">Multiple Paper Sizes</h3>
-          <p className="feature-desc">Full support for A4, A5, A3, Legal, Letter, glossy photopaper, and custom dimension prints.</p>
+          <p className="feature-desc">Full support for A4, A5, A3, Legal, Letter, glossy photopaper, and custom project prints.</p>
         </div>
 
         <div className="feature-card">
@@ -335,35 +421,35 @@ export default function Home() {
 
       {/* How it Works 3 Steps */}
       <section className="card" style={{ padding: 36, textAlign: "center", marginBottom: 20 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>How It Works in 3 Simple Steps</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 32 }}>Get your prints ready without standing in crowded shop lines</p>
+        <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8, letterSpacing: -0.3 }}>How It Works in 3 Simple Steps</h2>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 32 }}>Get your documents printed without standing in crowded shop lines</p>
 
         <div className="row-3" style={{ textAlign: "left" }}>
-          <div style={{ background: "#f8fafc", padding: 20, borderRadius: "var(--radius-md)" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 800, marginBottom: 12 }}>
+          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
               1
             </div>
-            <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Upload & Customize</h4>
+            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Upload & Customize</h4>
             <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
               Choose your paper size, color options, single/double sided, and attach your documents.
             </p>
           </div>
 
-          <div style={{ background: "#f8fafc", padding: 20, borderRadius: "var(--radius-md)" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 800, marginBottom: 12 }}>
+          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
               2
             </div>
-            <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Pay with UPI</h4>
+            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Pay with UPI</h4>
             <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
               Scan the UPI QR code on the payment page and upload your payment screenshot.
             </p>
           </div>
 
-          <div style={{ background: "#f8fafc", padding: 20, borderRadius: "var(--radius-md)" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 800, marginBottom: 12 }}>
+          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
               3
             </div>
-            <h4 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Track & Collect</h4>
+            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Track & Collect</h4>
             <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
               Follow your order timeline live and pick up your prints or receive them at your doorstep.
             </p>

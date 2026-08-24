@@ -40,3 +40,10 @@ whatsapp_auth/
 auth_info_baileys/
 baileys_auth/
 *.session
+
+# agent & ide configs
+.agent/
+.agents/
+.gemini/
+.gsd/
+
