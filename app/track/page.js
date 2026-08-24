@@ -184,6 +184,22 @@ export default function Track() {
             {/* Live Virtual Route Tracker */}
             <VirtualDeliveryMap order={order} />
 
+            {/* Anti-Fraud Rejection Alert if payment was rejected */}
+            {(order.status === "CANCELLED" || (order.status_history && order.status_history.some((h) => h.message && (h.message.includes("FAKE_SCREENSHOT") || h.message.toLowerCase().includes("fake"))))) && (
+              <div style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: "var(--radius-lg)", padding: "16px 20px", marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontSize: 16 }}>🚨</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#991b1b" }}>Payment Verification Rejected: Fake / Invalid Screenshot</span>
+                </div>
+                <p style={{ fontSize: 13, color: "#7f1d1d", margin: "0 0 10px", lineHeight: 1.5 }}>
+                  The uploaded payment screenshot / UTR was not credited to our store bank account. Please re-upload genuine proof.
+                </p>
+                <Link href={`/orders/${order.id}`} className="btn btn-sm" style={{ background: "#dc2626", color: "white", textDecoration: "none" }}>
+                  <span>Re-upload Genuine Payment Proof & UTR ↻</span>
+                </Link>
+              </div>
+            )}
+
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
                 <div>

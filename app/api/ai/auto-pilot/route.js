@@ -31,13 +31,14 @@ export async function POST(req) {
     const priorityInfo = order ? calculateOrderPriority(order) : null;
 
     if (action === "VERIFY_AND_PRINT") {
+      const isCashOverride = Boolean(body.isCashOverride);
       const hasProof = Boolean(order.payment_proof_path && order.payment_proof_path.trim().length > 0);
       const cleanUtr = (order.upi_utr || "").trim();
       const hasValidUtr = cleanUtr.length >= 8;
       const isAlreadyVerified = ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY"].includes(order.status);
 
-      // BLOCK FAKE / UNPAID ORDERS
-      if (!hasProof && !hasValidUtr && !isAlreadyVerified) {
+      // BLOCK FAKE / UNPAID ORDERS (unless authorized cash payment at store counter)
+      if (!isCashOverride && !hasProof && !hasValidUtr && !isAlreadyVerified) {
         return NextResponse.json({
           success: false,
           error: "❌ Anti-Fraud Check Failed: Customer has NOT uploaded a payment screenshot or entered a 12-digit UPI UTR. Printing cannot be started for unpaid orders.",
@@ -46,18 +47,25 @@ export async function POST(req) {
       }
 
       // 1. Update order to PRINTING
+      const updateData = {
+        status: "PRINTING",
+        updated_at: new Date().toISOString(),
+      };
+      if (isCashOverride && !order.upi_utr) {
+        updateData.upi_utr = "CASH_AT_COUNTER";
+      }
+
       const { error: updateErr } = await s
         .from("orders")
-        .update({
-          status: "PRINTING",
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", order.id);
 
       if (updateErr) throw updateErr;
 
       // 2. Insert AI status history note
-      const aiNote = `🤖 [AI Auto-Pilot] Real Payment Verified (UTR: ${order.upi_utr || "Screenshot Uploaded"}). Laser print queued. Priority: ${priorityInfo.level} (Score: ${priorityInfo.score}). Est. Duration: ~${priorityInfo.estMinutes} mins.`;
+      const aiNote = isCashOverride
+        ? `💵 [Store Counter] Cash payment of ₹${order.total}.00 verified in person at shop counter. Laser print queued.`
+        : `🤖 [AI Auto-Pilot] Real Payment Verified (UTR: ${order.upi_utr || "Screenshot Uploaded"}). Laser print queued. Priority: ${priorityInfo.level} (Score: ${priorityInfo.score}). Est. Duration: ~${priorityInfo.estMinutes} mins.`;
 
       await s.from("status_history").insert({
         order_id: order.id,
@@ -69,8 +77,9 @@ export async function POST(req) {
         success: true,
         action: "VERIFY_AND_PRINT",
         newStatus: "PRINTING",
+        isCashOverride,
         priorityInfo,
-        message: `Order #${order.order_number} verified and transitioned to PRINTING by AI Copilot.`,
+        message: `Order #${order.order_number} verified and transitioned to PRINTING.`,
       });
     }
 

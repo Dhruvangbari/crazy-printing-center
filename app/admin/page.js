@@ -298,7 +298,7 @@ export default function AdminDashboard() {
   }
 
   // 1-Click AI One-Tap Verify & Start Printing Action
-  async function handleAiVerifyAndPrint(order) {
+  async function handleAiVerifyAndPrint(order, options = {}) {
     if (!order) return;
     setAiProcessingId(order.id);
     try {
@@ -308,6 +308,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           action: "VERIFY_AND_PRINT",
           orderId: order.id,
+          isCashOverride: Boolean(options.isCashOverride),
         }),
       });
       const data = await res.json();
@@ -1088,7 +1089,7 @@ export default function AdminDashboard() {
                           disabled={isProcessing}
                           onClick={() => {
                             if (confirm(`Confirm customer paid ₹${selectedOrder.total} in CASH directly at the store counter?`)) {
-                              handleAiVerifyAndPrint(selectedOrder);
+                              handleAiVerifyAndPrint(selectedOrder, { isCashOverride: true });
                             }
                           }}
                           className="btn btn-secondary btn-sm"
@@ -1221,8 +1222,29 @@ export default function AdminDashboard() {
 
                   <button
                     onClick={() => {
-                      if (confirm("Flag this payment as FAKE / UNVERIFIED and cancel the order?")) {
-                        handleStatusChange(selectedOrder.id, "CANCELLED");
+                      if (confirm(`Flag order #${selectedOrder.order_number} payment as FAKE / UNVERIFIED screenshot?\nThis will notify the customer to re-upload genuine proof.`)) {
+                        handleStatusChange(
+                          selectedOrder.id,
+                          "CANCELLED",
+                          `🚨 FAKE_SCREENSHOT_DETECTED: Payment screenshot / UTR (${selectedOrder.upi_utr || "N/A"}) rejected as uncredited or fake. Customer must re-upload genuine payment proof.`,
+                          true
+                        );
+                        // Auto-dispatch customer alert on WhatsApp
+                        const custPhone = selectedOrder.customer_phone || selectedOrder.profiles?.phone;
+                        if (custPhone) {
+                          const reuploadUrl = typeof window !== "undefined" ? `${window.location.origin}/orders/${selectedOrder.id}` : `https://crazy-printing-center.vercel.app/orders/${selectedOrder.id}`;
+                          const fakeAlertMsg =
+                            `🚨 *PAYMENT VERIFICATION REJECTED*\n` +
+                            `*Dhruvang Crazy Printing Center*\n` +
+                            `------------------------------------\n` +
+                            `📄 *Order:* #${selectedOrder.order_number || "CPC"}\n` +
+                            `⚠️ *Issue:* The uploaded payment screenshot / UTR (*${selectedOrder.upi_utr || "Submitted Screenshot"}*) could not be verified in our store bank account.\n` +
+                            `💰 *Amount Pending:* ₹${selectedOrder.total}.00\n\n` +
+                            `👉 *Please re-upload your genuine payment screenshot / 12-digit UPI UTR here to resume printing:*\n` +
+                            `🔗 ${reuploadUrl}\n\n` +
+                            `📞 Store Cashier Helpline: +91 8857871669`;
+                          openWhatsAppChat(custPhone, fakeAlertMsg);
+                        }
                       }
                     }}
                     className="btn btn-sm"

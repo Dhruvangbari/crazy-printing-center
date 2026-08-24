@@ -353,6 +353,13 @@ export default function Detail() {
     "DELIVERED",
   ].includes(o.status);
 
+  const isFakeDetected = Boolean(
+    (o.status === "CANCELLED" && o.payment_proof_path) ||
+    (o.status_history && o.status_history.some((h) => 
+      (h.message && (h.message.includes("FAKE_SCREENSHOT") || h.message.toLowerCase().includes("fake") || h.message.toLowerCase().includes("uncredited")))
+    ))
+  );
+
   const shopUpi = process.env.NEXT_PUBLIC_UPI_ID || "crazyprinting@upi";
   const upiPayUrl = `upi://pay?pa=${shopUpi}&pn=CrazyPrintingCenter&am=${o.total}&cu=INR&tn=${encodeURIComponent(`Order ${o.order_number}`)}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
@@ -455,6 +462,45 @@ export default function Detail() {
             </div>
           </div>
         </div>
+
+        {/* Anti-Fraud Fake Screenshot / Payment Rejected Alert for Customer */}
+        {isFakeDetected && !isPaid && (
+          <div className="no-print" style={{ background: "#fef2f2", border: "2px solid #ef4444", borderRadius: "var(--radius-lg)", padding: "20px 24px", marginBottom: 24, boxShadow: "0 10px 25px -5px rgba(239, 68, 68, 0.15)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#fee2e2", color: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <ShieldAlert size={28} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 900, color: "#991b1b", margin: 0 }}>
+                    🚨 Payment Verification Failed: Fake / Invalid Screenshot Detected
+                  </h3>
+                  <span style={{ background: "#dc2626", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
+                    REJECTED BY STORE
+                  </span>
+                </div>
+                <p style={{ fontSize: 14, color: "#7f1d1d", lineHeight: 1.6, margin: "6px 0 14px" }}>
+                  Our shop cashier and bank verification system checked for your payment of <b>₹{o.total}.00</b>, but the submitted transaction screenshot or 12-digit UTR (<b>{o.upi_utr || "N/A"}</b>) was <b>not credited to our store bank account</b>.
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#991b1b" }}>
+                    👉 Please scan the QR code below and re-upload your genuine payment screenshot & 12-digit UTR to resume printing:
+                  </div>
+                  <a
+                    href={`https://wa.me/918857871669?text=${encodeURIComponent(`Hello Dhruvang Crazy Printing Center, my payment for Order #${o.order_number} (₹${o.total}) was flagged. Here is my query:`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-sm"
+                    style={{ background: "#16a34a", color: "white", fontSize: 12, padding: "6px 12px" }}
+                  >
+                    <MessageCircle size={14} />
+                    <span>Chat with Cashier</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Live Virtual Delivery Map & ETA Tracker */}
         <div className="no-print">
