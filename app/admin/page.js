@@ -380,20 +380,24 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1-Click AI Batch Process All Pending Payments
+  // 1-Click AI Batch Process All Real Submitted Payments
   async function handleAiBatchProcessPending() {
-    const pendingOrders = orders.filter((o) => ["PAYMENT_SUBMITTED", "ORDER_RECEIVED"].includes(o.status));
-    if (pendingOrders.length === 0) {
-      alert("No pending payment orders found to auto-process.");
+    const verifiedSubmittedOrders = orders.filter(
+      (o) => o.status === "PAYMENT_SUBMITTED" || (o.payment_proof_path || (o.upi_utr && o.upi_utr.trim().length >= 8))
+    ).filter((o) => !["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status));
+
+    if (verifiedSubmittedOrders.length === 0) {
+      const unpaidCount = orders.filter((o) => o.status === "ORDER_RECEIVED" && !o.payment_proof_path && !o.upi_utr).length;
+      alert(`No payment proofs or UTRs pending verification.\n(${unpaidCount} order(s) are currently UNPAID and awaiting customer payment).`);
       return;
     }
 
-    if (!confirm(`🤖 AI Auto-Pilot: Verify and start printing for ${pendingOrders.length} pending order(s)?`)) {
+    if (!confirm(`🤖 AI Anti-Fraud Auto-Pilot: Verify and start printing for ${verifiedSubmittedOrders.length} order(s) with submitted payment proofs?`)) {
       return;
     }
 
     setRefreshing(true);
-    for (const ord of pendingOrders) {
+    for (const ord of verifiedSubmittedOrders) {
       await handleAiVerifyAndPrint(ord);
     }
     await fetchOrders(true);
@@ -402,6 +406,24 @@ export default function AdminDashboard() {
   function handleSendAiWhatsAppAlert(order) {
     const alertText = generateAiAdminPaymentAlert(order);
     openWhatsAppChat("8857871669", alertText);
+  }
+
+  function handleSendPaymentReminder(order) {
+    const targetPhone = order.customer_phone || order.profiles?.phone;
+    if (!targetPhone) {
+      alert("Customer phone number is not available.");
+      return;
+    }
+    const payUrl = typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : `https://crazy-printing-center.vercel.app/orders/${order.id}`;
+    const reminderText = 
+      `👋 *Hello ${order.customer_name || "Valued Customer"}*,\n\n` +
+      `Your print order *#${order.order_number || "CPC"}* (Total: *₹${order.total}.00*) has been received at *Dhruvang Crazy Printing Center*.\n\n` +
+      `💳 *Action Required:* Please complete your UPI payment and upload the screenshot / 12-digit UTR here:\n` +
+      `🔗 ${payUrl}\n\n` +
+      `As soon as your payment proof is submitted, our high-speed laser printer will begin printing your documents immediately! 🖨️✨\n` +
+      `Helpline: +91 8857871669`;
+
+    openWhatsAppChat(targetPhone, reminderText);
   }
 
   // Calculate AI Priority on all orders
@@ -446,7 +468,8 @@ export default function AdminDashboard() {
 
   // Calculate KPIs & AI Insights
   const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-  const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length;
+  const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || (o.payment_proof_path || (o.upi_utr && o.upi_utr.trim().length >= 8))).filter((o) => !["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status)).length;
+  const unpaidOrdersCount = orders.filter((o) => o.status === "ORDER_RECEIVED" && !o.payment_proof_path && !o.upi_utr).length;
   const inProgressCount = orders.filter((o) => ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(o.status)).length;
   const readyCount = orders.filter((o) => o.status === "READY" || o.status === "OUT_FOR_DELIVERY").length;
   const urgentAiCount = scoredOrders.filter((o) => o.aiPriority.level === "URGENT" && !["DELIVERED", "CANCELLED"].includes(o.status)).length;
@@ -579,7 +602,7 @@ export default function AdminDashboard() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <Zap size={18} color="#facc15" />
-              <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: -0.2 }}>AI Print Dispatcher & Queue Copilot</span>
+              <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: -0.2 }}>AI Print Dispatcher & Anti-Fraud Queue Copilot</span>
               {urgentAiCount > 0 && (
                 <span style={{ background: "#dc2626", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
                   {urgentAiCount} URGENT
@@ -587,26 +610,33 @@ export default function AdminDashboard() {
               )}
             </div>
             <div style={{ fontSize: 13, color: "#cbd5e1", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span>⏱️ Active Print Queue: <b>~{totalEstQueueTime} mins</b></span>
+              <span>⏱️ Queue Load: <b>~{totalEstQueueTime} mins</b></span>
               <span>•</span>
-              <span>💳 Awaiting Payment Review: <b>{pendingPaymentCount}</b></span>
+              <span style={{ color: pendingPaymentCount > 0 ? "#4ade80" : "#cbd5e1" }}>💳 Payment Proofs to Verify: <b>{pendingPaymentCount}</b></span>
+              <span>•</span>
+              <span style={{ color: unpaidOrdersCount > 0 ? "#fde047" : "#cbd5e1" }}>⚠️ Unpaid Orders: <b>{unpaidOrdersCount}</b></span>
               <span>•</span>
               <span>🖨️ In Production: <b>{inProgressCount}</b></span>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {pendingPaymentCount > 0 && (
+            {pendingPaymentCount > 0 ? (
               <button
                 onClick={handleAiBatchProcessPending}
                 disabled={refreshing}
                 className="btn btn-sm"
                 style={{ background: "linear-gradient(135deg, #4f46e5, #06b6d4)", fontWeight: 800, border: "none", boxShadow: "0 2px 10px rgba(79, 70, 229, 0.4)" }}
-                title="AI Auto-Verify all pending payments and queue them for printing"
+                title="AI Auto-Verify orders with real submitted payment proofs and queue for printing"
               >
                 <Zap size={14} />
-                <span>AI Auto-Verify & Queue ({pendingPaymentCount})</span>
+                <span>Verify Real Payments ({pendingPaymentCount})</span>
               </button>
+            ) : (
+              <div style={{ fontSize: 12, color: "#94a3b8", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 8 }}>
+                <CheckCircle2 size={14} color="#34d399" />
+                <span>All submitted payments verified</span>
+              </div>
             )}
           </div>
         </div>
@@ -817,20 +847,42 @@ export default function AdminDashboard() {
                         <span className={`status-badge status-${o.status}`}>
                           {o.status?.replaceAll("_", " ")}
                         </span>
+                        {p.paymentCheck.status === "UNPAID" && (
+                          <div style={{ marginTop: 4 }}>
+                            <span style={{ display: "inline-block", fontSize: 10, fontWeight: 900, color: "#b45309", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 6px", borderRadius: 4 }}>
+                              ⚠️ NO PAYMENT YET
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(o.status) && (
+                          {/* 1. If customer submitted payment proof or UTR -> Allow AI Verify & Print */}
+                          {p.paymentCheck.canPrint && ["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(o.status) && (
                             <button
                               disabled={isProcessing}
                               onClick={() => handleAiVerifyAndPrint(o)}
                               className="btn btn-sm"
                               style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 800 }}
-                              title="1-Click AI Verify Payment & Queue Print"
+                              title="1-Click AI Verify Real Payment Proof & Queue Print"
                             >
                               <Zap size={12} />
                               <span>{isProcessing ? "Verifying..." : "AI Verify & Print"}</span>
+                            </button>
+                          )}
+
+                          {/* 2. If order is UNPAID (No screenshot/UTR) -> DO NOT ALLOW printing, provide WhatsApp payment reminder */}
+                          {p.paymentCheck.status === "UNPAID" && (
+                            <button
+                              type="button"
+                              onClick={() => handleSendPaymentReminder(o)}
+                              className="btn btn-sm"
+                              style={{ background: "#fffbeb", color: "#b45309", border: "1px solid #fde68a", padding: "5px 8px", fontSize: 11, fontWeight: 700 }}
+                              title="Send UPI payment reminder link to Customer on WhatsApp"
+                            >
+                              <MessageCircle size={12} color="#16a34a" />
+                              <span>Remind to Pay</span>
                             </button>
                           )}
 
@@ -972,29 +1024,41 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* AI Order Inspector & Priority Panel */}
+            {/* AI Order Inspector & Anti-Fraud Payment Panel */}
             {(() => {
               const p = selectedOrder.aiPriority || calculateOrderPriority(selectedOrder);
               const isProcessing = aiProcessingId === selectedOrder.id;
+              const isUnpaid = p.paymentCheck.status === "UNPAID";
+
               return (
-                <div style={{ marginBottom: 20, padding: "14px 16px", borderRadius: "var(--radius-md)", background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", border: "1px solid rgba(255,255,255,0.15)" }}>
+                <div style={{ marginBottom: 20, padding: "16px 18px", borderRadius: "var(--radius-md)", background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", border: "1px solid rgba(255,255,255,0.15)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <Zap size={16} color="#facc15" />
-                      <span style={{ fontWeight: 900, fontSize: 14 }}>AI Order Inspector & Queue Predictor</span>
+                      <span style={{ fontWeight: 900, fontSize: 14 }}>AI Order Inspector & Anti-Fraud Gate</span>
                     </div>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: p.bg, color: p.color, border: `1px solid ${p.border}`, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 }}>
-                      <span>{p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
-                      <span>Priority: {p.level} ({p.score}/100)</span>
+                      <span>{isUnpaid ? "⚠️" : p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
+                      <span>{p.paymentCheck.status}: {p.level} ({p.score}/100)</span>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5, marginBottom: 12 }}>
-                    ⏱️ <b>Estimated Print Duration:</b> ~{p.estMinutes} mins • 💡 <b>AI Reasoning:</b> {p.reason}
-                  </div>
+                  {/* Unpaid Warning Banner */}
+                  {isUnpaid && (
+                    <div style={{ background: "rgba(220, 38, 38, 0.2)", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, color: "#fecaca", lineHeight: 1.5 }}>
+                      🛑 <b>PAYMENT NOT RECEIVED:</b> Customer has placed this order for <b>₹{selectedOrder.total}.00</b>, but has <b>NOT</b> uploaded a payment screenshot or 12-digit UPI UTR. <b>Do not print without receiving payment!</b>
+                    </div>
+                  )}
+
+                  {!isUnpaid && (
+                    <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5, marginBottom: 12 }}>
+                      ⏱️ <b>Estimated Print Duration:</b> ~{p.estMinutes} mins • 💡 <b>Payment Status:</b> {p.paymentCheck.label}
+                    </div>
+                  )}
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
+                    {/* If genuine proof is attached -> Allow AI Verify & Print */}
+                    {!isUnpaid && ["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
                       <button
                         disabled={isProcessing}
                         onClick={() => handleAiVerifyAndPrint(selectedOrder)}
@@ -1002,8 +1066,38 @@ export default function AdminDashboard() {
                         style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", fontWeight: 800, border: "none" }}
                       >
                         <Zap size={13} />
-                        <span>{isProcessing ? "Processing..." : "⚡ AI Verify Payment & Start Printing"}</span>
+                        <span>{isProcessing ? "Processing..." : "⚡ AI Verify Real Payment & Queue Print"}</span>
                       </button>
+                    )}
+
+                    {/* If unpaid -> Offer WhatsApp payment reminder */}
+                    {isUnpaid && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSendPaymentReminder(selectedOrder)}
+                          className="btn btn-sm"
+                          style={{ background: "#22c55e", color: "white", fontWeight: 800, border: "none" }}
+                        >
+                          <MessageCircle size={13} />
+                          <span>Send WhatsApp Payment Reminder</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isProcessing}
+                          onClick={() => {
+                            if (confirm(`Confirm customer paid ₹${selectedOrder.total} in CASH directly at the store counter?`)) {
+                              handleAiVerifyAndPrint(selectedOrder);
+                            }
+                          }}
+                          className="btn btn-secondary btn-sm"
+                          style={{ background: "rgba(255,255,255,0.1)", color: "#f8fafc", borderColor: "rgba(255,255,255,0.2)", fontSize: 11 }}
+                          title="Override: Customer paid cash in person at shop counter"
+                        >
+                          <span>💵 Cash Paid at Counter</span>
+                        </button>
+                      </>
                     )}
 
                     {selectedOrder.status === "PRINTING" && (

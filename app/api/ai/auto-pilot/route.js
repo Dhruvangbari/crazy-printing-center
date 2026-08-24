@@ -31,6 +31,20 @@ export async function POST(req) {
     const priorityInfo = order ? calculateOrderPriority(order) : null;
 
     if (action === "VERIFY_AND_PRINT") {
+      const hasProof = Boolean(order.payment_proof_path && order.payment_proof_path.trim().length > 0);
+      const cleanUtr = (order.upi_utr || "").trim();
+      const hasValidUtr = cleanUtr.length >= 8;
+      const isAlreadyVerified = ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY"].includes(order.status);
+
+      // BLOCK FAKE / UNPAID ORDERS
+      if (!hasProof && !hasValidUtr && !isAlreadyVerified) {
+        return NextResponse.json({
+          success: false,
+          error: "❌ Anti-Fraud Check Failed: Customer has NOT uploaded a payment screenshot or entered a 12-digit UPI UTR. Printing cannot be started for unpaid orders.",
+          code: "PAYMENT_NOT_SUBMITTED"
+        }, { status: 400 });
+      }
+
       // 1. Update order to PRINTING
       const { error: updateErr } = await s
         .from("orders")
@@ -43,7 +57,7 @@ export async function POST(req) {
       if (updateErr) throw updateErr;
 
       // 2. Insert AI status history note
-      const aiNote = `🤖 [AI Auto-Pilot] Payment verified (UTR: ${order.upi_utr || "Verified"}). Laser print queued. Priority: ${priorityInfo.level} (Score: ${priorityInfo.score}). Est. Duration: ~${priorityInfo.estMinutes} mins.`;
+      const aiNote = `🤖 [AI Auto-Pilot] Real Payment Verified (UTR: ${order.upi_utr || "Screenshot Uploaded"}). Laser print queued. Priority: ${priorityInfo.level} (Score: ${priorityInfo.score}). Est. Duration: ~${priorityInfo.estMinutes} mins.`;
 
       await s.from("status_history").insert({
         order_id: order.id,
