@@ -35,9 +35,9 @@ import {
   XCircle,
   AlertTriangle
 } from "lucide-react";
-import { buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
+import { logUserAction } from "../../../lib/telemetry";
 
 export default function Detail() {
   const p = useParams();
@@ -93,6 +93,7 @@ export default function Detail() {
 
       setShowCancelModal(false);
       setCancelNotes("");
+      logUserAction("ORDER_CANCELLED", `Cancelled Order #${o.order_number}`, { orderId: o.id, reason: cancelReason, notes: cancelNotes });
       await loadOrder(false);
     } catch (err) {
       alert("Failed to cancel order: " + err.message);
@@ -296,6 +297,13 @@ export default function Detail() {
           })
         }).catch(() => {});
       } catch (e) {}
+
+      logUserAction("PAYMENT_SUBMITTED", `Submitted UPI UTR ${cleanUtr} for Order #${o.order_number} (₹${o.total}.00)`, {
+        orderId: o.id,
+        orderNumber: o.order_number,
+        utr: cleanUtr,
+        total: o.total,
+      });
 
       setMsg("🤖 AI Inspector: Payment submitted with 12-digit UTR! Admin notified to verify and begin laser printing.");
       setTimeout(() => location.reload(), 1500);
@@ -597,6 +605,13 @@ export default function Detail() {
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-muted)" }}>Priority:</span>
                 <b>{o.priority || "STANDARD"}</b>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "var(--text-muted)" }}>Fulfillment:</span>
+                <b style={{ color: o.delivery_mode === "DELIVERY" ? "#0284c7" : "#16a34a" }}>
+                  {o.delivery_mode === "DELIVERY" ? "🚚 Boisar Doorstep Delivery (+₹30.00)" : "🏪 Store Counter Pickup (Free)"}
+                </b>
               </div>
 
               {o.notes && (

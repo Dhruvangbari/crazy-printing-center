@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
@@ -26,10 +26,16 @@ import {
   CheckCircle2,
   Lock,
   LogIn,
-  MessageCircle
+  MessageCircle,
+  Truck,
+  Store,
+  Compass,
+  AlertTriangle,
+  FileCheck
 } from "lucide-react";
 import { countDocumentPages } from "../../lib/pageCounter";
-import { buildWhatsAppLink, buildOrderStatusMessage } from "../../lib/whatsapp";
+import BoisarDeliveryMap from "../../components/BoisarDeliveryMap";
+import { logUserAction } from "../../lib/telemetry";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -56,6 +62,64 @@ function isAllowedPrintDocument(file) {
   return hasAllowedExt;
 }
 
+// Lightweight celebration confetti effect
+function triggerConfetti() {
+  if (typeof window === "undefined") return;
+  const canvas = document.createElement("canvas");
+  canvas.className = "celebrate-confetti-canvas";
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const particles = [];
+  const colors = ["#4f46e5", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#38bdf8"];
+  
+  for (let i = 0; i < 75; i++) {
+    particles.push({
+      x: canvas.width / 2,
+      y: canvas.height / 2,
+      r: Math.random() * 6 + 3,
+      dx: (Math.random() - 0.5) * 16,
+      dy: (Math.random() - 0.7) * 18,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: 1,
+      tilt: Math.random() * 10
+    });
+  }
+
+  let animationFrame;
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+    for (const p of particles) {
+      p.x += p.dx;
+      p.y += p.dy;
+      p.dy += 0.4; // gravity
+      p.alpha -= 0.015;
+      if (p.alpha > 0) {
+        alive = true;
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (alive) {
+      animationFrame = requestAnimationFrame(render);
+    } else {
+      cancelAnimationFrame(animationFrame);
+      if (document.body.contains(canvas)) {
+        document.body.removeChild(canvas);
+      }
+    }
+  }
+  render();
+}
+
 export default function Order() {
   const router = useRouter();
   const fileInputRef = useRef(null);
@@ -63,15 +127,16 @@ export default function Order() {
   const [dragActive, setDragActive] = useState(false);
   const [detectingPages, setDetectingPages] = useState(false);
   
-  // Customer & Delivery info (Permanently saved in localStorage)
+  // Customer & Delivery info (Strict ACID state handling & LocalStorage durability)
   const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [deliveryMode, setDeliveryMode] = useState("PICKUP");
+  const [customerPhone, setCustomerPhone] = useState(""); // 10-digit numerical
+  const [deliveryMode, setDeliveryMode] = useState("PICKUP"); // "PICKUP" | "DELIVERY"
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
-  const [city, setCity] = useState("");
-  const [pincode, setPincode] = useState("");
+  const [city, setCity] = useState("Boisar, Maharashtra");
+  const [pincode, setPincode] = useState("401501"); // Numerical only
   const [notes, setNotes] = useState("");
+  const [selectedLocality, setSelectedLocality] = useState("");
 
   // Print Specifications
   const [paperSize, setPaperSize] = useState("A4");
@@ -82,25 +147,41 @@ export default function Order() {
   const [bindingType, setBindingType] = useState("NONE");
   const [priority, setPriority] = useState("STANDARD");
 
-  // Calculated Price
+  // Calculated Price Breakdown
   const [printCost, setPrintCost] = useState(0);
   const [bindingCost, setBindingCost] = useState(0);
   const [priorityCost, setPriorityCost] = useState(0);
+  const [deliveryCost, setDeliveryCost] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState(false);
   const [user, setUser] = useState(null);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // 1. Auto-load saved user session and auto-load saved address data
+  // Indian Phone validation (strictly 10 digits starting with 6, 7, 8, or 9)
+  const isPhoneValid = useMemo(() => {
+    const clean = (customerPhone || "").replace(/\D/g, "");
+    return clean.length === 10 && /^[6-9]\d{9}$/.test(clean);
+  }, [customerPhone]);
+
+  // Boisar 401501 Pincode serviceability check
+  const isBoisarPincode = useMemo(() => {
+    const cleanPin = (pincode || "").replace(/\D/g, "");
+    return cleanPin === "401501" || cleanPin === "401506";
+  }, [pincode]);
+
+  // 1. Auto-load saved user session and auto-load saved address data safely (Durability)
   useEffect(() => {
-    // Load cached customer address from localStorage immediately
     if (typeof window !== "undefined") {
       try {
         const saved = JSON.parse(localStorage.getItem("cpc_saved_customer_data") || "{}");
         if (saved.name) setCustomerName((prev) => prev || saved.name);
-        if (saved.phone) setCustomerPhone((prev) => prev || saved.phone);
+        if (saved.phone) {
+          const clean = saved.phone.replace(/\D/g, "").slice(-10);
+          setCustomerPhone((prev) => prev || clean);
+        }
         if (saved.address) setAddress((prev) => prev || saved.address);
         if (saved.city) setCity((prev) => prev || saved.city);
         if (saved.pincode) setPincode((prev) => prev || saved.pincode);
@@ -120,26 +201,30 @@ export default function Order() {
           .eq("id", u.id)
           .single();
         if (profile) {
-          if (profile.name) setCustomerName(profile.name);
-          if (profile.phone) setCustomerPhone(profile.phone);
+          if (profile.name) setCustomerName((prev) => prev || profile.name);
+          if (profile.phone) {
+            const clean = profile.phone.replace(/\D/g, "").slice(-10);
+            setCustomerPhone((prev) => prev || clean);
+          }
         } else {
           const defaultName = u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split("@")[0] || "";
           setCustomerName((prev) => prev || defaultName);
-          setCustomerPhone((prev) => prev || u.user_metadata?.phone || "");
+          if (u.user_metadata?.phone) {
+            const clean = u.user_metadata.phone.replace(/\D/g, "").slice(-10);
+            setCustomerPhone((prev) => prev || clean);
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
 
-    // Get current session from localStorage
     s.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         syncProfile(session.user);
       }
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = s.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         syncProfile(session.user);
@@ -151,23 +236,58 @@ export default function Order() {
     return () => subscription?.unsubscribe();
   }, []);
 
-  // Save customer details to localStorage on change so they never have to type it again
-  function saveCustomerData(name, phone, addr, ct, pin, lm) {
+  // Save customer details to localStorage (Durability)
+  function saveCustomerData(updates = {}) {
     if (typeof window !== "undefined") {
       try {
-        localStorage.setItem(
-          "cpc_saved_customer_data",
-          JSON.stringify({
-            name: name ?? customerName,
-            phone: phone ?? customerPhone,
-            address: addr ?? address,
-            city: ct ?? city,
-            pincode: pin ?? pincode,
-            landmark: lm ?? landmark,
-          })
-        );
+        const currentData = {
+          name: updates.name !== undefined ? updates.name : customerName,
+          phone: updates.phone !== undefined ? updates.phone : customerPhone,
+          address: updates.address !== undefined ? updates.address : address,
+          city: updates.city !== undefined ? updates.city : city,
+          pincode: updates.pincode !== undefined ? updates.pincode : pincode,
+          landmark: updates.landmark !== undefined ? updates.landmark : landmark,
+        };
+        localStorage.setItem("cpc_saved_customer_data", JSON.stringify(currentData));
       } catch (e) {}
     }
+  }
+
+  // Handle Indian Phone change strictly (ACID consistency)
+  function handlePhoneChange(e) {
+    const raw = e.target.value;
+    // Strip everything except numbers, maximum 10 digits
+    const digitsOnly = raw.replace(/\D/g, "").slice(0, 10);
+    setCustomerPhone(digitsOnly);
+    saveCustomerData({ phone: digitsOnly });
+  }
+
+  // Handle Numerical Pincode change strictly (ACID consistency)
+  function handlePincodeChange(e) {
+    const raw = e.target.value;
+    // Strip everything except numbers, maximum 6 digits
+    const digitsOnly = raw.replace(/\D/g, "").slice(0, 6);
+    setPincode(digitsOnly);
+    saveCustomerData({ pincode: digitsOnly });
+  }
+
+  // 1-Click Locality selection from Boisar Map
+  function handleSelectLocality(loc) {
+    setSelectedLocality(loc.name);
+    setCity("Boisar, Maharashtra");
+    setPincode("401501");
+    if (loc.landmark) {
+      setLandmark(loc.landmark);
+    }
+    if (!address) {
+      setAddress(`Near ${loc.name}`);
+    }
+    saveCustomerData({
+      landmark: loc.landmark,
+      city: "Boisar, Maharashtra",
+      pincode: "401501"
+    });
+    logUserAction("LOCATION_SELECT", `Selected Boisar Area: ${loc.name}`, { locality: loc.name, landmark: loc.landmark });
   }
 
   async function handleGoogleLogin() {
@@ -197,9 +317,9 @@ export default function Order() {
     }
   }
 
-  // Calculate live itemized pricing based on TOTAL PAGES across all documents
   const totalPages = files.length > 0 ? files.reduce((sum, f) => sum + (Number(f.pages) || 1), 0) : 1;
 
+  // Calculate live itemized pricing including Boisar Doorstep Delivery charge
   useEffect(() => {
     let sizeMultiplier =
       {
@@ -216,7 +336,7 @@ export default function Order() {
     let paperTypeAdd = paperType === "GLOSSY" ? 3 : paperType === "PREMIUM" ? 1.5 : 0;
     let numCopies = Math.max(1, Number(copies) || 1);
 
-    // Multiply by total pages of document!
+    // Document print charge
     let baseCalculated = Math.max(
       5,
       Math.ceil((colorRate * sizeMultiplier * sideDiscount + paperTypeAdd) * numCopies * totalPages)
@@ -225,12 +345,16 @@ export default function Order() {
     const selectedBinding = BINDING_OPTIONS.find((b) => b.id === bindingType) || { price: 0 };
     const bindingFee = selectedBinding.price * numCopies;
     const priorityFee = priority === "EXPRESS" ? 20 : 0;
+    
+    // Transparent Boisar Delivery Charge: ₹30 for Doorstep Delivery, ₹0 for Pickup
+    const deliveryFee = deliveryMode === "DELIVERY" ? 30 : 0;
 
     setPrintCost(baseCalculated);
     setBindingCost(bindingFee);
     setPriorityCost(priorityFee);
-    setTotalPrice(baseCalculated + bindingFee + priorityFee);
-  }, [paperSize, colorMode, sides, paperType, copies, files, totalPages, bindingType, priority]);
+    setDeliveryCost(deliveryFee);
+    setTotalPrice(baseCalculated + bindingFee + priorityFee + deliveryFee);
+  }, [paperSize, colorMode, sides, paperType, copies, files, totalPages, bindingType, priority, deliveryMode]);
 
   function handleDrag(e) {
     e.preventDefault();
@@ -259,7 +383,7 @@ export default function Order() {
 
     if (rejectedFiles.length > 0) {
       setErr(
-        `Blocked Non-Printable File(s): ${rejectedFiles.join(", ")}. Audio/Video (MP3, MP4) and executable files cannot be printed. Only PDF, Word, PowerPoint, and Image files are accepted.`
+        `Blocked Non-Printable File(s): ${rejectedFiles.join(", ")}. Audio/Video and executable files cannot be printed. Only PDF, Word, PowerPoint, and Image files are accepted.`
       );
     }
 
@@ -281,6 +405,10 @@ export default function Order() {
     }
     setFiles((prev) => [...prev, ...processed]);
     setDetectingPages(false);
+    logUserAction("DOC_UPLOAD", `Attached ${processed.length} Document(s) (${processed.map(p => p.name).join(", ")})`, {
+      fileNames: processed.map(p => p.name),
+      totalPages: processed.reduce((s, p) => s + (p.pages || 1), 0)
+    });
   }
 
   function handleDrop(e) {
@@ -315,15 +443,46 @@ export default function Order() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // ACID-Compliant Order Submission
   async function handleSubmit(e) {
     e.preventDefault();
     setErr("");
+
+    // 1. Strict Validation Check (Atomicity & Consistency)
+    if (!files.length) {
+      setErr("Please attach at least one document to print.");
+      return;
+    }
+
+    if (!customerName.trim() || customerName.trim().length < 2) {
+      setErr("Please provide the complete Customer Name (at least 2 characters).");
+      return;
+    }
+
+    const cleanPhone = customerPhone.replace(/\D/g, "");
+    if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+      setErr("Please provide a valid 10-digit Indian Mobile Number (starting with 6, 7, 8, or 9).");
+      return;
+    }
+
+    if (deliveryMode === "DELIVERY") {
+      if (!address.trim()) {
+        setErr("Please provide your delivery street address / building in Boisar.");
+        return;
+      }
+      
+      const cleanPin = pincode.replace(/\D/g, "");
+      if (cleanPin !== "401501" && cleanPin !== "401506") {
+        setErr("Zomato Service Alert: Doorstep delivery is currently valid strictly for Boisar, Maharashtra (PIN: 401501). Please change pincode to 401501 or select 'Shop Counter Pickup'.");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
       const s = supabase();
       
-      // Auto-get authenticated user or current session
       let currentUser = user;
       if (!currentUser) {
         const { data: { session } } = await s.auth.getSession();
@@ -336,56 +495,33 @@ export default function Order() {
         return;
       }
 
-      if (!files.length) {
-        setErr("Please attach at least one document to print.");
-        setLoading(false);
-        return;
-      }
-
-      if (!customerName.trim()) {
-        setErr("Please provide the Customer / Recipient Name.");
-        setLoading(false);
-        return;
-      }
-
-      if (!customerPhone.trim()) {
-        setErr("Please provide a Contact Phone Number for order tracking & delivery.");
-        setLoading(false);
-        return;
-      }
-
-      if (deliveryMode === "DELIVERY" && !address.trim()) {
-        setErr("Please provide complete delivery street address.");
-        setLoading(false);
-        return;
-      }
-
-      // Persist details locally so customer never needs to re-enter
+      // Persist customer profile details locally (Durability)
       saveCustomerData();
 
-      // Update profile info
+      // Update profile info in database
+      const fullPhone = `+91 ${cleanPhone}`;
       await s.from("profiles").upsert(
         {
           id: currentUser.id,
           name: customerName.trim(),
-          phone: customerPhone.trim(),
+          phone: fullPhone,
         },
         { onConflict: "id" }
       );
 
-      // Create Order
+      // Construct verified delivery address
       const fullDeliveryAddress = deliveryMode === "DELIVERY" 
-        ? `${address}${landmark ? `, Near ${landmark}` : ""}${city ? `, ${city}` : ""}${pincode ? ` - ${pincode}` : ""}`
-        : "Shop Counter Pickup";
+        ? `${address}${landmark ? `, Near ${landmark}` : ""}, ${city || "Boisar, Maharashtra"} - ${pincode || "401501"}`
+        : "Shop Counter Pickup - Dhruvang Crazy Printing Center, Boisar";
 
       const orderPayload = {
         user_id: currentUser.id,
         customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
+        customer_phone: fullPhone,
         delivery_mode: deliveryMode,
         address: fullDeliveryAddress,
-        city: city.trim() || null,
-        pincode: pincode.trim() || null,
+        city: city.trim() || "Boisar",
+        pincode: pincode.trim() || "401501",
         landmark: landmark.trim() || null,
         paper_size: paperSize,
         color_mode: colorMode,
@@ -401,7 +537,7 @@ export default function Order() {
         status: "ORDER_RECEIVED",
       };
 
-      // Upload Documents first
+      // Upload Documents safely
       const uploadedFiles = [];
       const tempOrderId = "temp-" + Date.now();
 
@@ -422,16 +558,16 @@ export default function Order() {
         });
       }
 
-      // 1. Try atomic ACID procedure
+      // 1. Try atomic ACID stored procedure
       let order = null;
       const { data: atomicOrder, error: atomicErr } = await s.rpc("create_order_atomic", {
         p_user_id: currentUser.id,
         p_customer_name: customerName.trim(),
-        p_customer_phone: customerPhone.trim(),
+        p_customer_phone: fullPhone,
         p_delivery_mode: deliveryMode,
         p_address: fullDeliveryAddress,
-        p_city: city.trim() || null,
-        p_pincode: pincode.trim() || null,
+        p_city: city.trim() || "Boisar",
+        p_pincode: pincode.trim() || "401501",
         p_landmark: landmark.trim() || null,
         p_paper_size: paperSize,
         p_color_mode: colorMode,
@@ -475,20 +611,11 @@ export default function Order() {
         await s.from("status_history").insert({
           order_id: order.id,
           status: "ORDER_RECEIVED",
-          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s).`,
+          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s). Delivery: ${deliveryMode === "DELIVERY" ? "Boisar 401501 Doorstep" : "Store Counter Pickup"}.`,
         });
       }
 
-      // Auto-dispatch Advance Bill to Customer's WhatsApp
-      try {
-        const advanceBillMsg = buildOrderStatusMessage(order, "BILL");
-        const advanceWhatsAppUrl = buildWhatsAppLink(customerPhone, advanceBillMsg);
-        if (typeof window !== "undefined" && customerPhone) {
-          window.open(advanceWhatsAppUrl, "_blank", "noopener,noreferrer");
-        }
-      } catch (e) {}
-
-      // Trigger AI Order Agent to alert Admin of incoming print job
+      // Trigger AI Order Agent to alert Admin in background
       try {
         fetch("/api/ai/notify-admin", {
           method: "POST",
@@ -500,7 +627,25 @@ export default function Order() {
         }).catch(() => {});
       } catch (e) {}
 
-      router.push(`/orders/${order.id}`);
+      // Fast celebration confetti animation
+      setOrderSuccess(true);
+      triggerConfetti();
+
+      logUserAction("ORDER_PLACED", `Placed Order #${order.order_number} for ₹${order.total}.00`, {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        total: order.total,
+        deliveryMode: order.delivery_mode,
+        paperSize: order.paper_size,
+        colorMode: order.color_mode,
+        pageCount: totalPages,
+        copies: order.copies,
+      });
+
+      // Fast, smooth redirect to order tracking page (Zero unwanted WhatsApp popups)
+      setTimeout(() => {
+        router.push(`/orders/${order.id}`);
+      }, 450);
     } catch (unexpected) {
       setErr(unexpected.message || "An unexpected error occurred.");
       setLoading(false);
@@ -519,15 +664,54 @@ export default function Order() {
         <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>New Print Order</span>
       </div>
 
-      <div style={{ maxWidth: 840, margin: "0 auto 40px" }}>
-        <div style={{ marginBottom: 24, textAlign: "center" }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.5 }}>Create New Print Order</h1>
+      <div style={{ maxWidth: 880, margin: "0 auto 40px" }}>
+        <div style={{ marginBottom: 20, textAlign: "center" }}>
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "#ecfdf5",
+            color: "#059669",
+            border: "1px solid #a7f3d0",
+            padding: "4px 12px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 800,
+            marginBottom: 10
+          }}>
+            <Zap size={14} color="#059669" />
+            <span>Superfast Production • Boisar 401501 Doorstep & Store Pickup</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: -0.5 }}>Create New Print Order</h1>
           <p style={{ color: "var(--text-muted)", fontSize: 15, marginTop: 4 }}>
-            Upload your documents, customize paper and binding, and get instant price calculation
+            Upload files, customize paper & binding, choose Boisar delivery, and proceed seamlessly.
           </p>
         </div>
 
-        {/* Auth status indicator / Quick Google Login banner */}
+        {/* Dynamic 4-Step Progress Indicator */}
+        <div className="order-step-bar">
+          <div className={`order-step-item ${files.length > 0 ? "completed" : "active"}`}>
+            <span className="order-step-num">{files.length > 0 ? "✓" : "1"}</span>
+            <span>1. Upload Files</span>
+          </div>
+          <div className="order-step-divider" />
+          <div className={`order-step-item ${files.length > 0 ? "active" : ""}`}>
+            <span className="order-step-num">2</span>
+            <span>2. Customize Specs</span>
+          </div>
+          <div className="order-step-divider" />
+          <div className={`order-step-item ${customerName && isPhoneValid ? "active" : ""}`}>
+            <span className="order-step-num">3</span>
+            <span>3. Boisar Delivery</span>
+          </div>
+          <div className="order-step-divider" />
+          <div className="order-step-item">
+            <span className="order-step-num">4</span>
+            <span>4. Summary & Pay</span>
+          </div>
+        </div>
+
+        {/* Auth status indicator / Google Login banner */}
         <div style={{ marginBottom: 20 }}>
           {user ? (
             <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "10px 16px", borderRadius: "var(--radius-md)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -557,22 +741,10 @@ export default function Order() {
                 className="btn btn-google btn-sm"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
                 <span>{googleLoading ? "Connecting..." : "Sign in with Google"}</span>
               </button>
@@ -588,42 +760,71 @@ export default function Order() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* 1. Customer & Contact Details */}
+          {/* 1. Customer & Contact Details with ACID Properties */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <User size={20} color="var(--primary)" />
-                <span>Customer & Contact Details</span>
+                <span>1. Customer & Indian Mobile Details</span>
               </h2>
+              <span style={{ fontSize: 12, color: "#166534", fontWeight: 700, background: "#f0fdf4", padding: "3px 8px", borderRadius: 6, border: "1px solid #bbf7d0" }}>
+                🔒 ACID Validated
+              </span>
             </div>
 
             <div className="row">
               <div className="field">
-                <label>Customer Full Name *</label>
+                <label>
+                  Customer Full Name <span style={{ color: "var(--danger)" }}>*</span>
+                </label>
                 <input
                   type="text"
                   placeholder="e.g., Dhruvang Bari"
                   value={customerName}
                   onChange={(e) => {
                     setCustomerName(e.target.value);
-                    saveCustomerData(e.target.value);
+                    saveCustomerData({ name: e.target.value });
                   }}
                   required
                 />
               </div>
 
+              {/* Indian Phone Input with +91 Country Code Badge & Instant Regex Validation */}
               <div className="field">
-                <label>Contact Phone / WhatsApp *</label>
-                <input
-                  type="tel"
-                  placeholder="+91 8857871669"
-                  value={customerPhone}
-                  onChange={(e) => {
-                    setCustomerPhone(e.target.value);
-                    saveCustomerData(null, e.target.value);
-                  }}
-                  required
-                />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ margin: 0 }}>
+                    Indian Mobile Number <span style={{ color: "var(--danger)" }}>*</span>
+                  </label>
+                  {customerPhone && (
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: isPhoneValid ? "#16a34a" : "#dc2626",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4
+                    }}>
+                      {isPhoneValid ? "✓ Valid Indian Number" : "⚠️ Must be 10 digits (starts with 6-9)"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="phone-input-group">
+                  <div className="phone-prefix-badge">
+                    <span>🇮🇳</span>
+                    <span>+91</span>
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
+                    placeholder="8857871669"
+                    value={customerPhone}
+                    onChange={handlePhoneChange}
+                    required
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -633,7 +834,7 @@ export default function Order() {
             <div className="card-header">
               <h2 className="card-title">
                 <UploadCloud size={20} color="var(--primary)" />
-                <span>Attach Documents</span>
+                <span>2. Attach Documents to Print</span>
               </h2>
               <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
                 {files.length} {files.length === 1 ? "file" : "files"} ({totalPages} pages total)
@@ -661,7 +862,7 @@ export default function Order() {
                 {detectingPages ? "Analyzing document pages..." : "Click to browse or drag & drop files here"}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                PDF, Word (DOCX), PowerPoint, and Images accepted. (Audio/Video MP3/MP4 strictly blocked)
+                PDF, Word (DOCX), PowerPoint, and Images accepted.
               </div>
             </div>
 
@@ -670,6 +871,7 @@ export default function Order() {
                 {files.map((file, index) => (
                   <div
                     key={index}
+                    className="fast-pop-anim"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -751,7 +953,7 @@ export default function Order() {
             <div className="card-header">
               <h2 className="card-title">
                 <Layers size={20} color="var(--primary)" />
-                <span>Print Job Specifications</span>
+                <span>3. Print Job Specifications</span>
               </h2>
             </div>
 
@@ -814,7 +1016,7 @@ export default function Order() {
             <div className="card-header">
               <h2 className="card-title">
                 <BookOpen size={20} color="var(--primary)" />
-                <span>Binding & Finishing Add-ons</span>
+                <span>4. Binding & Finishing Add-ons</span>
               </h2>
             </div>
 
@@ -838,26 +1040,33 @@ export default function Order() {
             </div>
           </div>
 
-          {/* 5. Delivery Location & Mode */}
+          {/* 5. Boisar Delivery & Fulfillment (Zomato Style) */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <MapPin size={20} color="var(--primary)" />
-                <span>Delivery & Fulfillment</span>
+                <span>5. Delivery Location (Valid in Boisar 401501)</span>
               </h2>
+              <span style={{ fontSize: 12, background: "#ecfdf5", color: "#059669", padding: "3px 10px", borderRadius: 999, fontWeight: 800, border: "1px solid #a7f3d0" }}>
+                📍 Boisar Maharashtra
+              </span>
             </div>
 
+            {/* Mode Selectors with Transparent Delivery Charges */}
             <div className="row" style={{ marginBottom: 16 }}>
               <div
                 className={`option-card ${deliveryMode === "PICKUP" ? "selected" : ""}`}
                 onClick={() => setDeliveryMode("PICKUP")}
               >
                 <div className="option-card-title">
-                  <span>🏪 Shop Counter Pickup</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Store size={18} color="var(--primary)" />
+                    <b>Shop Counter Pickup</b>
+                  </span>
                   {deliveryMode === "PICKUP" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Collect directly from store counter with zero waiting time</div>
-                <div className="option-card-price">FREE</div>
+                <div className="option-card-desc">Zero waiting time at store counter (Boisar West)</div>
+                <div className="option-card-price" style={{ color: "#16a34a" }}>FREE (₹0)</div>
               </div>
 
               <div
@@ -865,40 +1074,80 @@ export default function Order() {
                 onClick={() => setDeliveryMode("DELIVERY")}
               >
                 <div className="option-card-title">
-                  <span>🚚 Doorstep Delivery</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Truck size={18} color="#0284c7" />
+                    <b>Doorstep Delivery (Boisar)</b>
+                  </span>
                   {deliveryMode === "DELIVERY" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Delivered safely to your home, office, or college</div>
-                <div className="option-card-price">Standard Rate</div>
+                <div className="option-card-desc">Delivered to your home/office anywhere in Boisar (401501)</div>
+                <div className="option-card-price">+₹30.00 Delivery Fee</div>
               </div>
             </div>
 
+            {/* Interactive Boisar Map Component */}
+            <BoisarDeliveryMap
+              selectedLocality={selectedLocality}
+              onSelectLocality={handleSelectLocality}
+              userPincode={pincode}
+              isDelivery={deliveryMode === "DELIVERY"}
+            />
+
             {deliveryMode === "DELIVERY" && (
-              <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", marginTop: 12 }}>
+              <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
+                {/* Zomato-style Serviceability Alert Banner */}
+                {!isBoisarPincode ? (
+                  <div className="zomato-unserviceable-banner" style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <AlertTriangle size={20} color="#dc2626" />
+                      <div>
+                        <b>Outside Delivery Service Area:</b> Currently doorstep delivery is available exclusively in <b>Boisar, Maharashtra (PIN: 401501)</b>.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMode("PICKUP")}
+                      className="btn btn-sm"
+                      style={{ background: "#dc2626", color: "white" }}
+                    >
+                      Switch to Store Pickup (Free)
+                    </button>
+                  </div>
+                ) : (
+                  <div className="zomato-service-banner" style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <CheckCircle2 size={18} color="#16a34a" />
+                      <div>
+                        <b>Serving Boisar 401501:</b> Your location is within our active delivery zone. Standard delivery charge: <b>₹30.00</b>.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="field">
-                  <label>Street Address / Flat / Floor / Building *</label>
+                  <label>Street Address / Flat / Floor / Building <span style={{ color: "var(--danger)" }}>*</span></label>
                   <textarea
-                    placeholder="e.g., Flat 402, Sunshine Heights, Main Road"
+                    placeholder="e.g., Flat 402, Sunshine Heights, Main Road, Boisar"
                     value={address}
                     onChange={(e) => {
                       setAddress(e.target.value);
-                      saveCustomerData(null, null, e.target.value);
+                      saveCustomerData({ address: e.target.value });
                     }}
                     rows={2}
-                    required
+                    required={deliveryMode === "DELIVERY"}
                   />
                 </div>
 
                 <div className="row" style={{ marginTop: 12 }}>
                   <div className="field">
-                    <label>Landmark (Optional)</label>
+                    <label>Landmark / Locality (Optional)</label>
                     <input
                       type="text"
-                      placeholder="e.g., Near City Hospital"
+                      placeholder="e.g., Near Ostwal Empire / Station"
                       value={landmark}
                       onChange={(e) => {
                         setLandmark(e.target.value);
-                        saveCustomerData(null, null, null, null, null, e.target.value);
+                        saveCustomerData({ landmark: e.target.value });
                       }}
                     />
                   </div>
@@ -907,25 +1156,34 @@ export default function Order() {
                     <label>City / Town</label>
                     <input
                       type="text"
-                      placeholder="e.g., Pune"
                       value={city}
                       onChange={(e) => {
                         setCity(e.target.value);
-                        saveCustomerData(null, null, null, e.target.value);
+                        saveCustomerData({ city: e.target.value });
                       }}
+                      placeholder="Boisar, Maharashtra"
                     />
                   </div>
 
+                  {/* Numerical Pincode Only */}
                   <div className="field">
-                    <label>Pincode</label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <label style={{ margin: 0 }}>
+                        Pincode (Numerical Only) <span style={{ color: "var(--danger)" }}>*</span>
+                      </label>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: isBoisarPincode ? "#16a34a" : "#dc2626" }}>
+                        {isBoisarPincode ? "✓ Boisar 401501" : "⚠️ Boisar PIN only"}
+                      </span>
+                    </div>
                     <input
                       type="text"
-                      placeholder="e.g., 411001"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      placeholder="401501"
                       value={pincode}
-                      onChange={(e) => {
-                        setPincode(e.target.value);
-                        saveCustomerData(null, null, null, null, e.target.value);
-                      }}
+                      onChange={handlePincodeChange}
+                      required={deliveryMode === "DELIVERY"}
                     />
                   </div>
                 </div>
@@ -933,12 +1191,12 @@ export default function Order() {
             )}
           </div>
 
-          {/* 6. Processing Speed & Instructions */}
+          {/* 6. Processing Speed & Notes */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <Clock size={20} color="var(--primary)" />
-                <span>Processing Speed & Instructions</span>
+                <span>6. Processing Speed & Special Notes</span>
               </h2>
             </div>
 
@@ -951,7 +1209,7 @@ export default function Order() {
                   <span>⏱️ Standard Queue</span>
                   {priority === "STANDARD" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Printed in regular sequence (Ready in 30-45 mins)</div>
+                <div className="option-card-desc">Printed in regular sequence (Ready in 20-30 mins)</div>
                 <div className="option-card-price">Included</div>
               </div>
 
@@ -963,7 +1221,7 @@ export default function Order() {
                   <span>⚡ Express Rush</span>
                   {priority === "EXPRESS" && <Check size={16} color="var(--primary)" />}
                 </div>
-                <div className="option-card-desc">Top-of-queue priority execution (Ready in 10-15 mins)</div>
+                <div className="option-card-desc">Top-of-queue priority execution (Ready in 5-10 mins)</div>
                 <div className="option-card-price">+₹20</div>
               </div>
             </div>
@@ -980,7 +1238,7 @@ export default function Order() {
           </div>
 
           {/* 7. Live Cost Summary & Order Submission */}
-          <div className="card" style={{ background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)", color: "white", padding: 24 }}>
+          <div className="card" style={{ background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)", color: "white", padding: 24, boxShadow: "0 20px 40px rgba(15, 23, 42, 0.4)" }}>
             <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
               <Sparkles size={20} color="#38bdf8" />
               <span>Live Order Summary & Cost Breakdown</span>
@@ -1003,31 +1261,47 @@ export default function Order() {
 
               {priorityCost > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#94a3b8" }}>⚡ Express Queue Fee:</span>
+                  <span style={{ color: "#94a3b8" }}>⚡ Express Rush Fee:</span>
                   <b>+₹{priorityCost}.00</b>
                 </div>
               )}
 
+              {/* Transparent Boisar Delivery Charge Line Item */}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#94a3b8" }}>Fulfillment Mode:</span>
-                <b>{deliveryMode === "PICKUP" ? "Counter Pickup (Free)" : "Doorstep Delivery"}</b>
+                <span style={{ color: "#94a3b8" }}>
+                  {deliveryMode === "DELIVERY" ? "🚚 Boisar Doorstep Delivery Fee:" : "🏪 Store Counter Pickup:"}
+                </span>
+                <b>{deliveryCost > 0 ? `+₹${deliveryCost}.00` : "FREE (₹0.00)"}</b>
               </div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>GRAND TOTAL TO PAY</div>
-                <div style={{ fontSize: 32, fontWeight: 900, color: "#38bdf8" }}>₹{totalPrice}.00</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, letterSpacing: 0.5 }}>GRAND TOTAL TO PAY</div>
+                <div style={{ fontSize: 34, fontWeight: 900, color: "#38bdf8" }}>₹{totalPrice}.00</div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || files.length === 0}
+                disabled={loading || files.length === 0 || (deliveryMode === "DELIVERY" && !isBoisarPincode)}
                 className="btn btn-lg"
-                style={{ background: "#16a34a", color: "white", padding: "14px 24px", fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, flex: "1 1 300px" }}
+                style={{
+                  background: (deliveryMode === "DELIVERY" && !isBoisarPincode) ? "#64748b" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "white",
+                  padding: "16px 28px",
+                  fontSize: 16,
+                  fontWeight: 900,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  flex: "1 1 320px",
+                  boxShadow: "0 8px 24px rgba(16, 185, 129, 0.4)",
+                  cursor: (deliveryMode === "DELIVERY" && !isBoisarPincode) ? "not-allowed" : "pointer"
+                }}
               >
-                <MessageCircle size={20} />
-                <span>{loading ? "Creating Order & Bill..." : "Create Order & Send Advance Bill 📲"}</span>
+                <Zap size={20} />
+                <span>{loading ? "Confirming Order..." : "Confirm & Place Print Order ⚡"}</span>
                 <ArrowRight size={18} />
               </button>
             </div>

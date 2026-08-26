@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
@@ -33,7 +33,20 @@ import {
   Zap,
   Home,
   Copy,
-  ShieldAlert
+  ShieldAlert,
+  Radio,
+  Activity,
+  Users,
+  Globe,
+  Laptop,
+  Smartphone,
+  Sparkles,
+  History,
+  Compass,
+  ArrowRight,
+  Send,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
 import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
@@ -59,6 +72,15 @@ const SORT_OPTIONS = [
   { key: "PAGES", label: "📄 Quickest (Fewest Pages)" },
 ];
 
+const ACTION_CATEGORIES = [
+  { key: "ALL", label: "⚡ All Live Actions" },
+  { key: "ORDER", label: "📦 Orders Placed" },
+  { key: "PAYMENT", label: "💳 Payments & UTR" },
+  { key: "UPLOAD", label: "📄 Document Uploads" },
+  { key: "LOCATION", label: "📍 Boisar Locations" },
+  { key: "PAGE_VIEW", label: "🧭 Page Navigation" },
+];
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -70,18 +92,53 @@ export default function AdminDashboard() {
   const [sortBy, setSortBy] = useState("AI_PRIORITY");
   const [updating, setUpdating] = useState(false);
   const [aiProcessingId, setAiProcessingId] = useState(null);
-  const [statusMsg, setStatusMsg] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState("");
 
+  // ==========================================
+  // REAL-TIME LIVE USERS & TELEMETRY STATE
+  // ==========================================
+  const [adminTab, setAdminTab] = useState("orders"); // "orders" | "live_users" | "actions_stream"
+  const [liveUsers, setLiveUsers] = useState([]);
+  const [actionLogs, setActionLogs] = useState([]);
+  const [actionFilter, setActionFilter] = useState("ALL");
+  const [actionSearch, setActionSearch] = useState("");
+  const [selectedUserInspect, setSelectedUserInspect] = useState(null);
+  const [newActionFlash, setNewActionFlash] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioContextRef = useRef(null);
+
+  // Play subtle high-tech notification chime on new live action if sound enabled
+  function playNotificationChime() {
+    if (!soundEnabled || typeof window === "undefined") return;
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioContextRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (e) {}
+  }
+
   useEffect(() => {
     checkAdminAndFetch();
 
-    // 1. Setup Supabase Realtime subscription for instant incoming orders & updates
     const s = supabase();
-    const channel = s
+
+    // 1. Supabase Realtime subscription for Orders & Status History
+    const orderChannel = s
       .channel("admin_orders_realtime_channel")
       .on(
         "postgres_changes",
@@ -99,16 +156,112 @@ export default function AdminDashboard() {
       )
       .subscribe();
 
-    // 2. Auto-refresh polling every 5 seconds as a rock-solid backup
+    // 2. Real-Time Presence for Live Connected Users
+    const presenceChannel = s.channel("cpc_live_presence");
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState();
+        const usersList = [];
+        Object.keys(state).forEach((key) => {
+          state[key].forEach((u) => {
+            usersList.push({
+              ...u,
+              presenceKey: key,
+            });
+          });
+        });
+        setLiveUsers(usersList);
+      })
+      .on("presence", { event: "join" }, ({ newPresences }) => {
+        if (newPresences && newPresences.length > 0) {
+          const joinedUser = newPresences[0];
+          const joinAction = {
+            sessionId: joinedUser.sessionId,
+            actionType: "PAGE_VIEW",
+            actionTitle: `User joined site at ${joinedUser.currentPath || "/"}`,
+            userName: joinedUser.name || "Guest Visitor",
+            userPhone: joinedUser.phone || "",
+            pageUrl: joinedUser.currentPath || "/",
+            deviceInfo: joinedUser.deviceInfo || "Device",
+            timestamp: new Date().toISOString(),
+          };
+          setActionLogs((prev) => [joinAction, ...prev.slice(0, 199)]);
+        }
+      })
+      .subscribe();
+
+    // 3. Real-Time Broadcast for Live User Action Stream
+    const actionsBroadcastChannel = s.channel("cpc_live_actions_channel");
+    actionsBroadcastChannel
+      .on("broadcast", { event: "user_action" }, ({ payload }) => {
+        if (payload) {
+          setActionLogs((prev) => {
+            // Avoid duplicate by sessionId and timestamp if needed
+            return [payload, ...prev.slice(0, 199)];
+          });
+          setNewActionFlash(true);
+          playNotificationChime();
+          setTimeout(() => setNewActionFlash(false), 2000);
+        }
+      })
+      .subscribe();
+
+    // 4. Initial fetch of persistent activity logs from database
+    fetchInitialActivityLogs();
+
+    // 5. Auto-refresh polling backup every 5 seconds
     const interval = setInterval(() => {
       fetchOrders(true);
     }, 5000);
 
     return () => {
-      s.removeChannel(channel);
+      s.removeChannel(orderChannel);
+      s.removeChannel(presenceChannel);
+      s.removeChannel(actionsBroadcastChannel);
       clearInterval(interval);
     };
-  }, []);
+  }, [soundEnabled]);
+
+  async function fetchInitialActivityLogs() {
+    try {
+      const s = supabase();
+      const { data } = await s
+        .from("activity_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (data && data.length > 0) {
+        const mapped = data.map((d) => ({
+          sessionId: d.session_id,
+          actionType: d.action_type,
+          actionTitle: d.action_title,
+          details: d.details,
+          pageUrl: d.page_url,
+          deviceInfo: d.device_info,
+          userName: d.user_name,
+          userPhone: d.user_phone,
+          timestamp: d.created_at,
+          ipAddress: d.ip_address,
+        }));
+        setActionLogs((prev) => {
+          const combined = [...prev, ...mapped];
+          const unique = [];
+          const seen = new Set();
+          for (const item of combined) {
+            const key = `${item.sessionId}-${item.timestamp}-${item.actionTitle}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              unique.push(item);
+            }
+          }
+          return unique.slice(0, 200);
+        });
+      }
+    } catch (e) {
+      console.debug("Activity logs fetch warning:", e);
+    }
+  }
 
   async function checkAdminAndFetch() {
     setLoading(true);
@@ -121,7 +274,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Verify Admin role or direct Dhruvang email
       const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
 
       const { data: profile } = await s
@@ -181,9 +333,8 @@ export default function AdminDashboard() {
     try {
       const targetOrder = (orders || []).find((o) => o.id === orderId) || selectedOrder;
 
-      // Strict guard against invalid backwards transition from DELIVERED or CANCELLED
       if (targetOrder?.status === "DELIVERED" && newStatus !== "DELIVERED" && !allowOverride) {
-        alert("⚠️ Action Blocked: This order has already been DELIVERED to the customer. Moving backwards to earlier stages (like 'Out for Delivery' or 'Printing') is not allowed.");
+        alert("⚠️ Action Blocked: This order has already been DELIVERED to the customer.");
         setUpdating(false);
         return;
       }
@@ -195,8 +346,6 @@ export default function AdminDashboard() {
       }
 
       const s = supabase();
-
-      // 1. Update order status
       const { error: orderError } = await s
         .from("orders")
         .update({
@@ -207,282 +356,108 @@ export default function AdminDashboard() {
 
       if (orderError) throw orderError;
 
-      // 2. Add entry to status history
-      const defaultMessages = {
-        PAYMENT_VERIFIED: "Payment verified by store admin. Order queued for printing.",
-        PRINTING: "Document sent to production printer.",
-        QUALITY_CHECK: "Print job completed and quality checked.",
-        READY: "Order is packed and ready for pickup / dispatch.",
-        OUT_FOR_DELIVERY: "Order dispatched with delivery partner.",
-        DELIVERED: "Order successfully delivered / handed over to customer.",
-        CANCELLED: "Order has been cancelled.",
-      };
-
-      const finalMessage = customMsg.trim() || statusMsg.trim() || defaultMessages[newStatus] || `Status updated to ${newStatus}`;
-
+      const defaultMsg = customMsg || `Status updated to ${newStatus.replaceAll("_", " ")} by Store Administrator.`;
       await s.from("status_history").insert({
         order_id: orderId,
         status: newStatus,
-        message: finalMessage,
+        message: defaultMsg,
       });
 
-      // 3. Auto-Dispatch Email & SMS Bill when payment is verified
-      if (newStatus === "PAYMENT_VERIFIED") {
-        if (targetOrder) {
-          fetch("/api/notify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "PAYMENT_VERIFIED",
-              orderId: targetOrder.id,
-              orderNumber: targetOrder.order_number,
-              customerName: targetOrder.customer_name || targetOrder.profiles?.name || "Customer",
-              customerPhone: targetOrder.customer_phone || targetOrder.profiles?.phone || "",
-              total: targetOrder.total,
-              upiUtr: targetOrder.upi_utr,
-              paperSize: targetOrder.paper_size,
-              colorMode: targetOrder.color_mode,
-              pageCount: targetOrder.page_count,
-              copies: targetOrder.copies,
-              deliveryMode: targetOrder.delivery_mode,
-              address: targetOrder.address,
-              trackingUrl: typeof window !== "undefined" ? `${window.location.origin}/orders/${targetOrder.id}` : "",
-            }),
-          }).catch((notifyErr) => console.warn("Notify API error:", notifyErr));
-        }
-      }
-
-      setStatusMsg("");
-      await fetchOrders();
+      await fetchOrders(true);
     } catch (err) {
-      console.error("Status update error:", err);
-      alert("Failed to update status: " + err.message);
+      alert("Status update failed: " + err.message);
     } finally {
       setUpdating(false);
     }
   }
 
-  async function getDownloadUrl(bucket, path) {
-    const s = supabase();
-    const { data } = s.storage.from(bucket).getPublicUrl(path);
-    return data?.publicUrl || "#";
-  }
+  // Filter & Sort Orders
+  const filteredOrders = useMemo(() => {
+    let result = [...orders];
 
-  async function handleDownload(bucket, path, filename) {
-    try {
-      const s = supabase();
-      const { data, error } = await s.storage.from(bucket).download(path);
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Download error: " + err.message);
-    }
-  }
-
-  function getCustomerWhatsAppLink(order, targetStatus) {
-    if (!order) return "#";
-    const msg = buildOrderStatusMessage(order, targetStatus);
-    return buildWhatsAppLink(order.customer_phone || order.profiles?.phone, msg);
-  }
-
-  function handlePrintJobSheet() {
-    window.print();
-  }
-
-  // 1-Click AI One-Tap Verify & Start Printing Action
-  async function handleAiVerifyAndPrint(order, options = {}) {
-    if (!order) return;
-    setAiProcessingId(order.id);
-    try {
-      const res = await fetch("/api/ai/auto-pilot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "VERIFY_AND_PRINT",
-          orderId: order.id,
-          isCashOverride: Boolean(options.isCashOverride),
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert("AI Action Failed: " + (data.error || "Unknown error"));
-        return;
-      }
-
-      // Auto-dispatch customer payment receipt notification
-      try {
-        fetch("/api/notify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId: order.id,
-            orderNumber: order.order_number,
-            customerName: order.customer_name || order.profiles?.name,
-            customerEmail: order.profiles?.email,
-            customerPhone: order.customer_phone || order.profiles?.phone,
-            total: order.total,
-            upiUtr: order.upi_utr,
-            paperSize: order.paper_size,
-            colorMode: order.color_mode,
-            pageCount: order.page_count,
-            copies: order.copies,
-            deliveryMode: order.delivery_mode,
-            address: order.address,
-            trackingUrl: typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : "",
-          }),
-        }).catch(() => {});
-      } catch (e) {}
-
-      await fetchOrders(true);
-      if (selectedOrder?.id === order.id) {
-        setSelectedOrder((prev) => ({ ...prev, status: "PRINTING" }));
-      }
-    } catch (err) {
-      alert("Error: " + err.message);
-    } finally {
-      setAiProcessingId(null);
-    }
-  }
-
-  // AI 1-Click Mark Ready / Dispatch
-  async function handleAiMarkReady(order) {
-    if (!order) return;
-    setAiProcessingId(order.id);
-    try {
-      const res = await fetch("/api/ai/auto-pilot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "MARK_READY",
-          orderId: order.id,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert("AI Action Failed: " + (data.error || "Unknown error"));
-        return;
-      }
-      await fetchOrders(true);
-      if (selectedOrder?.id === order.id) {
-        setSelectedOrder((prev) => ({ ...prev, status: data.newStatus }));
-      }
-    } catch (err) {
-      alert("Error: " + err.message);
-    } finally {
-      setAiProcessingId(null);
-    }
-  }
-
-  // 1-Click AI Batch Process All Real Submitted Payments
-  async function handleAiBatchProcessPending() {
-    const verifiedSubmittedOrders = orders.filter(
-      (o) => o.status === "PAYMENT_SUBMITTED" || (o.payment_proof_path || (o.upi_utr && o.upi_utr.trim().length >= 8))
-    ).filter((o) => !["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status));
-
-    if (verifiedSubmittedOrders.length === 0) {
-      const unpaidCount = orders.filter((o) => o.status === "ORDER_RECEIVED" && !o.payment_proof_path && !o.upi_utr).length;
-      alert(`No payment proofs or UTRs pending verification.\n(${unpaidCount} order(s) are currently UNPAID and awaiting customer payment).`);
-      return;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (o) =>
+          o.order_number?.toLowerCase().includes(q) ||
+          o.customer_name?.toLowerCase().includes(q) ||
+          o.customer_phone?.toLowerCase().includes(q) ||
+          o.address?.toLowerCase().includes(q) ||
+          o.upi_utr?.toLowerCase().includes(q) ||
+          o.profiles?.name?.toLowerCase().includes(q) ||
+          o.profiles?.phone?.toLowerCase().includes(q)
+      );
     }
 
-    if (!confirm(`🤖 AI Anti-Fraud Auto-Pilot: Verify and start printing for ${verifiedSubmittedOrders.length} order(s) with submitted payment proofs?`)) {
-      return;
+    if (statusFilter !== "ALL") {
+      result = result.filter((o) => o.status === statusFilter);
     }
 
-    setRefreshing(true);
-    for (const ord of verifiedSubmittedOrders) {
-      await handleAiVerifyAndPrint(ord);
-    }
-    await fetchOrders(true);
-  }
+    result = result.map((o) => ({
+      ...o,
+      aiPriority: calculateOrderPriority(o),
+    }));
 
-  function handleSendAiWhatsAppAlert(order) {
-    const alertText = generateAiAdminPaymentAlert(order);
-    openWhatsAppChat("8857871669", alertText);
-  }
-
-  function handleSendPaymentReminder(order) {
-    const targetPhone = order.customer_phone || order.profiles?.phone;
-    if (!targetPhone) {
-      alert("Customer phone number is not available.");
-      return;
-    }
-    const payUrl = typeof window !== "undefined" ? `${window.location.origin}/orders/${order.id}` : `https://crazy-printing-center.vercel.app/orders/${order.id}`;
-    const reminderText = 
-      `👋 *Hello ${order.customer_name || "Valued Customer"}*,\n\n` +
-      `Your print order *#${order.order_number || "CPC"}* (Total: *₹${order.total}.00*) has been received at *Dhruvang Crazy Printing Center*.\n\n` +
-      `💳 *Action Required:* Please complete your UPI payment and upload the screenshot / 12-digit UTR here:\n` +
-      `🔗 ${payUrl}\n\n` +
-      `As soon as your payment proof is submitted, our high-speed laser printer will begin printing your documents immediately! 🖨️✨\n` +
-      `Helpline: +91 8857871669`;
-
-    openWhatsAppChat(targetPhone, reminderText);
-  }
-
-  // Calculate AI Priority on all orders
-  const scoredOrders = orders.map((o) => ({
-    ...o,
-    aiPriority: calculateOrderPriority(o),
-  }));
-
-  // Filtered orders
-  const filteredOrders = scoredOrders.filter((o) => {
-    const matchesStatus = statusFilter === "ALL" || o.status === statusFilter;
-    const q = search.toLowerCase();
-    const matchesSearch =
-      !search ||
-      o.order_number?.toLowerCase().includes(q) ||
-      o.customer_name?.toLowerCase().includes(q) ||
-      o.customer_phone?.toLowerCase().includes(q) ||
-      o.profiles?.name?.toLowerCase().includes(q) ||
-      o.address?.toLowerCase().includes(q);
-
-    return matchesStatus && matchesSearch;
-  });
-
-  // Sort orders based on chosen sort option
-  filteredOrders.sort((a, b) => {
     if (sortBy === "AI_PRIORITY") {
-      return b.aiPriority.score - a.aiPriority.score;
+      result.sort((a, b) => b.aiPriority.score - a.aiPriority.score);
+    } else if (sortBy === "NEWEST") {
+      result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else if (sortBy === "VALUE") {
+      result.sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
+    } else if (sortBy === "PAGES") {
+      result.sort((a, b) => Number(a.page_count || 1) - Number(b.page_count || 1));
     }
-    if (sortBy === "NEWEST") {
-      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-    }
-    if (sortBy === "VALUE") {
-      return (Number(b.total) || 0) - (Number(a.total) || 0);
-    }
-    if (sortBy === "PAGES") {
-      const aPages = (Number(a.page_count) || 1) * (Number(a.copies) || 1);
-      const bPages = (Number(b.page_count) || 1) * (Number(b.copies) || 1);
-      return aPages - bPages;
-    }
-    return 0;
-  });
 
-  // Calculate KPIs & AI Insights
-  const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-  const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || (o.payment_proof_path || (o.upi_utr && o.upi_utr.trim().length >= 8))).filter((o) => !["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"].includes(o.status)).length;
-  const unpaidOrdersCount = orders.filter((o) => o.status === "ORDER_RECEIVED" && !o.payment_proof_path && !o.upi_utr).length;
+    return result;
+  }, [orders, search, statusFilter, sortBy]);
+
+  // Filter Action Logs
+  const filteredActionLogs = useMemo(() => {
+    let result = [...actionLogs];
+
+    if (actionFilter === "ORDER") {
+      result = result.filter((a) => a.actionType === "ORDER_PLACED" || a.actionType === "ORDER_CANCELLED");
+    } else if (actionFilter === "PAYMENT") {
+      result = result.filter((a) => a.actionType === "PAYMENT_SUBMITTED");
+    } else if (actionFilter === "UPLOAD") {
+      result = result.filter((a) => a.actionType === "DOC_UPLOAD");
+    } else if (actionFilter === "LOCATION") {
+      result = result.filter((a) => a.actionType === "LOCATION_SELECT");
+    } else if (actionFilter === "PAGE_VIEW") {
+      result = result.filter((a) => a.actionType === "PAGE_VIEW");
+    }
+
+    if (actionSearch.trim()) {
+      const q = actionSearch.toLowerCase();
+      result = result.filter(
+        (a) =>
+          a.actionTitle?.toLowerCase().includes(q) ||
+          a.userName?.toLowerCase().includes(q) ||
+          a.userPhone?.toLowerCase().includes(q) ||
+          a.pageUrl?.toLowerCase().includes(q) ||
+          a.deviceInfo?.toLowerCase().includes(q) ||
+          a.sessionId?.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [actionLogs, actionFilter, actionSearch]);
+
+  // Key metrics
+  const totalRevenue = orders
+    .filter((o) => !["CANCELLED"].includes(o.status))
+    .reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+
+  const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED").length;
   const inProgressCount = orders.filter((o) => ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(o.status)).length;
-  const readyCount = orders.filter((o) => o.status === "READY" || o.status === "OUT_FOR_DELIVERY").length;
-  const urgentAiCount = scoredOrders.filter((o) => o.aiPriority.level === "URGENT" && !["DELIVERED", "CANCELLED"].includes(o.status)).length;
-  const totalEstQueueTime = scoredOrders
-    .filter((o) => ["PAYMENT_SUBMITTED", "PAYMENT_VERIFIED", "PRINTING"].includes(o.status))
-    .reduce((sum, o) => sum + (o.aiPriority.estMinutes || 3), 0);
+  const urgentAiCount = filteredOrders.filter((o) => o.aiPriority?.urgency === "HIGH").length;
 
   if (loading) {
     return (
       <main className="wrap">
-        <div className="card" style={{ textAlign: "center", padding: 50 }}>
-          Verifying Admin Credentials...
+        <div className="card" style={{ textAlign: "center", padding: 60 }}>
+          <RefreshCw size={28} className="spin-animation" style={{ margin: "0 auto 12px", color: "var(--primary)" }} />
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Authenticating Admin Access...</div>
         </div>
       </main>
     );
@@ -491,17 +466,14 @@ export default function AdminDashboard() {
   if (!isAdmin) {
     return (
       <main className="wrap">
-        <div className="card" style={{ maxWidth: 550, margin: "40px auto", textAlign: "center", padding: 36 }}>
-          <AlertTriangle size={48} color="var(--warning)" style={{ margin: "0 auto 16px" }} />
-          <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>Admin Access Required</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-            Your account is currently registered as a <b>CUSTOMER</b>. To access the Admin Console, promote your role to <b>ADMIN</b> in Supabase:
+        <div className="card" style={{ maxWidth: 500, margin: "60px auto", textAlign: "center", padding: 40 }}>
+          <ShieldAlert size={48} color="var(--danger)" style={{ margin: "0 auto 16px" }} />
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "var(--danger)" }}>Admin Access Restricted</h2>
+          <p style={{ color: "var(--text-muted)", marginTop: 8, marginBottom: 20 }}>
+            Only authorized administrators can access this portal.
           </p>
-          <div style={{ background: "#f1f5f9", padding: "12px 16px", borderRadius: 8, textAlign: "left", fontSize: 13, fontFamily: "monospace", marginBottom: 24 }}>
-            UPDATE public.profiles SET role = 'ADMIN' WHERE id = 'YOUR-USER-ID';
-          </div>
           <Link href="/orders" className="btn btn-sm">
-            Go to My Customer Orders
+            Go to My Orders
           </Link>
         </div>
       </main>
@@ -510,969 +482,887 @@ export default function AdminDashboard() {
 
   return (
     <main className="wrap">
-      {/* Admin Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
-        <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
-          <Home size={15} />
-          <span>Home</span>
-        </Link>
-        <span style={{ color: "var(--border)" }}>/</span>
-        <span style={{ color: "var(--text-main)", fontSize: 13, fontWeight: 600 }}>Admin Console</span>
-      </div>
-
       {/* Admin Top Header */}
-      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+      <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800 }}>Admin Order Console</h1>
+            <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -0.5 }}>Admin Operations Command Center</h1>
             <span className="admin-nav-badge">
               <ShieldCheck size={15} />
               <span>LIVE ADMIN</span>
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
-            Real-time live queue, automated job ticketing, and WhatsApp customer updates
+            Real-time live user presence, action telemetry stream, queue management, and WhatsApp updates
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#ecfdf5", color: "#065f46", padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 800, border: "1px solid #a7f3d0" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
-            <span>REALTIME (5s)</span>
-          </div>
+          {/* Live Online Users Presence Pill */}
+          <button
+            onClick={() => setAdminTab("live_users")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: liveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
+              color: liveUsers.length > 0 ? "#065f46" : "#64748b",
+              padding: "6px 14px",
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 800,
+              border: `1px solid ${liveUsers.length > 0 ? "#a7f3d0" : "var(--border)"}`,
+              cursor: "pointer",
+              transition: "all 0.2s ease"
+            }}
+          >
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: liveUsers.length > 0 ? "#10b981" : "#94a3b8",
+              boxShadow: liveUsers.length > 0 ? "0 0 10px #10b981" : "none",
+              animation: liveUsers.length > 0 ? "pulseGlow 1.5s infinite" : "none"
+            }} />
+            <span>{liveUsers.length} {liveUsers.length === 1 ? "User" : "Users"} Online Now</span>
+          </button>
+
+          {/* Sound Toggle */}
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="btn btn-secondary btn-sm"
+            style={{ padding: "6px 10px" }}
+            title={soundEnabled ? "Mute live action audio chimes" : "Enable live action audio chimes"}
+          >
+            {soundEnabled ? <Volume2 size={15} color="#10b981" /> : <VolumeX size={15} color="#94a3b8" />}
+          </button>
 
           <button 
-            onClick={() => fetchOrders(false)} 
+            onClick={() => {
+              fetchOrders(false);
+              fetchInitialActivityLogs();
+            }} 
             disabled={refreshing} 
             className="btn btn-secondary btn-sm"
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            title="Refresh order queue"
+            title="Refresh order queue and action feed"
           >
             <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
-            <span>{refreshing ? "Refreshing..." : "Refresh Orders"}</span>
+            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="stats-grid no-print">
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: "var(--primary-light)", color: "var(--primary)" }}>
-            <ShoppingBag size={24} />
-          </div>
-          <div>
-            <div className="stat-value">{orders.length}</div>
-            <div className="stat-label">Total Orders</div>
-          </div>
-        </div>
+      {/* Main Admin Navigation Tabs */}
+      <div className="no-print" style={{
+        display: "flex",
+        gap: 8,
+        borderBottom: "2px solid var(--border)",
+        marginBottom: 24,
+        overflowX: "auto",
+        paddingBottom: 2
+      }}>
+        <button
+          onClick={() => setAdminTab("orders")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "orders" ? "3px solid var(--primary)" : "3px solid transparent",
+            color: adminTab === "orders" ? "var(--primary)" : "var(--text-muted)",
+            fontWeight: adminTab === "orders" ? 800 : 600,
+            fontSize: 14,
+            cursor: "pointer",
+            marginBottom: -2,
+            transition: "all 0.2s ease",
+            whiteSpace: "nowrap"
+          }}
+        >
+          <ShoppingBag size={18} />
+          <span>Print Orders & Queue</span>
+          <span style={{
+            background: adminTab === "orders" ? "var(--primary-light)" : "#f1f5f9",
+            color: adminTab === "orders" ? "var(--primary)" : "var(--text-muted)",
+            fontSize: 11,
+            fontWeight: 800,
+            padding: "2px 8px",
+            borderRadius: 999
+          }}>
+            {orders.length}
+          </span>
+        </button>
 
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: "var(--warning-bg)", color: "var(--warning)" }}>
-            <Clock size={24} />
-          </div>
-          <div>
-            <div className="stat-value">{pendingPaymentCount}</div>
-            <div className="stat-label">Pending Review</div>
-          </div>
-        </div>
+        <button
+          onClick={() => setAdminTab("live_users")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "live_users" ? "3px solid #10b981" : "3px solid transparent",
+            color: adminTab === "live_users" ? "#059669" : "var(--text-muted)",
+            fontWeight: adminTab === "live_users" ? 800 : 600,
+            fontSize: 14,
+            cursor: "pointer",
+            marginBottom: -2,
+            transition: "all 0.2s ease",
+            whiteSpace: "nowrap"
+          }}
+        >
+          <Users size={18} color={adminTab === "live_users" ? "#10b981" : "currentColor"} />
+          <span>Live Active Users</span>
+          <span style={{
+            background: liveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
+            color: liveUsers.length > 0 ? "#059669" : "var(--text-muted)",
+            fontSize: 11,
+            fontWeight: 900,
+            padding: "2px 8px",
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
+            {liveUsers.length} ONLINE
+          </span>
+        </button>
 
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: "#ede9fe", color: "#6d28d9" }}>
-            <Printer size={24} />
-          </div>
-          <div>
-            <div className="stat-value">{inProgressCount}</div>
-            <div className="stat-label">In Production</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
-            <IndianRupee size={24} />
-          </div>
-          <div>
-            <div className="stat-value">₹{totalRevenue}</div>
-            <div className="stat-label">Store Revenue</div>
-          </div>
-        </div>
+        <button
+          onClick={() => setAdminTab("actions_stream")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "actions_stream" ? "3px solid #06b6d4" : "3px solid transparent",
+            color: adminTab === "actions_stream" ? "#0891b2" : "var(--text-muted)",
+            fontWeight: adminTab === "actions_stream" ? 800 : 600,
+            fontSize: 14,
+            cursor: "pointer",
+            marginBottom: -2,
+            transition: "all 0.2s ease",
+            whiteSpace: "nowrap"
+          }}
+        >
+          <Activity size={18} color={adminTab === "actions_stream" ? "#06b6d4" : "currentColor"} />
+          <span>Real-Time Action Stream</span>
+          {newActionFlash && (
+            <span style={{
+              background: "#06b6d4",
+              color: "white",
+              fontSize: 10,
+              fontWeight: 900,
+              padding: "2px 6px",
+              borderRadius: 999,
+              animation: "pulseGlow 1s infinite"
+            }}>
+              LIVE PING
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* AI Print Dispatcher & Copilot Banner */}
-      <div className="card no-print" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", padding: "20px 24px", marginBottom: 24, border: "1px solid rgba(255,255,255,0.12)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <Zap size={18} color="#facc15" />
-              <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: -0.2 }}>AI Print Dispatcher & Anti-Fraud Queue Copilot</span>
-              {urgentAiCount > 0 && (
-                <span style={{ background: "#dc2626", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
-                  {urgentAiCount} URGENT
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 13, color: "#cbd5e1", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span>⏱️ Queue Load: <b>~{totalEstQueueTime} mins</b></span>
-              <span>•</span>
-              <span style={{ color: pendingPaymentCount > 0 ? "#4ade80" : "#cbd5e1" }}>💳 Payment Proofs to Verify: <b>{pendingPaymentCount}</b></span>
-              <span>•</span>
-              <span style={{ color: unpaidOrdersCount > 0 ? "#fde047" : "#cbd5e1" }}>⚠️ Unpaid Orders: <b>{unpaidOrdersCount}</b></span>
-              <span>•</span>
-              <span>🖨️ In Production: <b>{inProgressCount}</b></span>
+      {/* ========================================================= */}
+      {/* TAB 1: LIVE ACTIVE USERS PRESENCE MONITOR */}
+      {/* ========================================================= */}
+      {adminTab === "live_users" && (
+        <div className="no-print fast-pop-anim">
+          {/* Live Users Radar Hero */}
+          <div className="card" style={{
+            background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
+            color: "white",
+            padding: "24px 28px",
+            marginBottom: 24,
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            boxShadow: "0 20px 40px rgba(15, 23, 42, 0.35)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <div style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #10b981, #06b6d4)",
+                    display: "grid",
+                    placeItems: "center",
+                    boxShadow: "0 0 16px rgba(16, 185, 129, 0.5)"
+                  }}>
+                    <Radio size={20} color="white" />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: 20, fontWeight: 900, letterSpacing: -0.3, margin: 0 }}>
+                      Live User Presence & Visitor Radar
+                    </h2>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                      Connected in real-time via Supabase Presence Channel • Sub-second accuracy
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                background: "rgba(255,255,255,0.08)",
+                padding: "10px 18px",
+                borderRadius: "var(--radius-md)",
+                backdropFilter: "blur(8px)",
+                border: "1px solid rgba(255,255,255,0.12)"
+              }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>ONLINE RIGHT NOW</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: "#4ade80" }}>{liveUsers.length}</div>
+                </div>
+                <div style={{ width: 1, height: 32, background: "rgba(255,255,255,0.15)" }} />
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>LOCALITY</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#38bdf8" }}>Boisar (401501)</div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {pendingPaymentCount > 0 ? (
-              <button
-                onClick={handleAiBatchProcessPending}
-                disabled={refreshing}
-                className="btn btn-sm"
-                style={{ background: "linear-gradient(135deg, #4f46e5, #06b6d4)", fontWeight: 800, border: "none", boxShadow: "0 2px 10px rgba(79, 70, 229, 0.4)" }}
-                title="AI Auto-Verify orders with real submitted payment proofs and queue for printing"
-              >
-                <Zap size={14} />
-                <span>Verify Real Payments ({pendingPaymentCount})</span>
-              </button>
+          {/* Active Users Grid */}
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <Users size={18} color="var(--primary)" />
+              <span>Active Connected Visitors ({liveUsers.length})</span>
+            </h3>
+
+            {liveUsers.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: "48px 20px", color: "var(--text-muted)" }}>
+                <Users size={36} color="#cbd5e1" style={{ margin: "0 auto 10px" }} />
+                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text-main)" }}>No other visitors online right now</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>
+                  As soon as a customer opens the store, their live card and current action will appear here instantly.
+                </div>
+              </div>
             ) : (
-              <div style={{ fontSize: 12, color: "#94a3b8", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 8 }}>
-                <CheckCircle2 size={14} color="#34d399" />
-                <span>All submitted payments verified</span>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+                {liveUsers.map((user, idx) => {
+                  const isPlacingOrder = user.currentPath === "/order";
+                  const isTracking = user.currentPath?.startsWith("/orders/");
+
+                  return (
+                    <div
+                      key={user.sessionId || idx}
+                      className="card fast-pop-anim"
+                      style={{
+                        padding: 18,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        borderLeft: isPlacingOrder ? "4px solid #10b981" : isTracking ? "4px solid #06b6d4" : "4px solid var(--primary)",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <div>
+                        {/* User Header */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: "50%",
+                              background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
+                              color: "white",
+                              display: "grid",
+                              placeItems: "center",
+                              fontWeight: 900,
+                              fontSize: 14,
+                              position: "relative"
+                            }}>
+                              {(user.name || "G")[0].toUpperCase()}
+                              <span style={{
+                                position: "absolute",
+                                bottom: -1,
+                                right: -1,
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                background: "#10b981",
+                                border: "2px solid white"
+                              }} />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text-main)" }}>
+                                {user.name || "Guest Visitor"}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                {user.phone ? `📞 ${user.phone}` : `ID: ${user.sessionId?.slice(-8)}`}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Live Status Badge */}
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 800,
+                            background: isPlacingOrder ? "#ecfdf5" : isTracking ? "#e0f2fe" : "#f1f5f9",
+                            color: isPlacingOrder ? "#059669" : isTracking ? "#0284c7" : "#475569",
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            border: "1px solid rgba(0,0,0,0.06)"
+                          }}>
+                            {user.status || (isPlacingOrder ? "Placing Order" : "Active")}
+                          </span>
+                        </div>
+
+                        {/* Page & Device Info */}
+                        <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12, border: "1px solid var(--border)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                            <Compass size={13} color="var(--primary)" />
+                            <span style={{ color: "var(--text-muted)" }}>Current Page:</span>
+                            <code style={{ background: "white", padding: "1px 6px", borderRadius: 4, fontWeight: 700, color: "var(--text-main)" }}>
+                              {user.currentPath || "/"}
+                            </code>
+                          </div>
+
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--text-muted)", fontSize: 11, marginTop: 6 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <Laptop size={12} />
+                              <span>{user.deviceInfo || "Desktop"}</span>
+                            </span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <MapPin size={12} color="#059669" />
+                              <span>{user.locality || "Boisar, MH"}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer Actions */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          Online: <FormattedDate date={user.onlineAt || new Date().toISOString()} />
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserInspect(user)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: 11, padding: "4px 8px" }}
+                        >
+                          <History size={12} />
+                          <span>View History</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Search, Status & AI Sort Filters */}
-      <div className="card no-print" style={{ marginBottom: 24, padding: "18px 20px" }}>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-          {/* Search bar */}
-          <div style={{ position: "relative", minWidth: 260, flex: 1 }}>
-            <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-            <input
-              type="text"
-              placeholder="Search by order #, recipient name, phone, address..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: "100%",
-                paddingLeft: 38,
-                paddingRight: 14,
-                paddingTop: 9,
-                paddingBottom: 9,
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                fontSize: 14,
-              }}
-            />
-          </div>
-
-          {/* Sort By Dropdown */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Sort:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{
-                padding: "9px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                fontSize: 13,
-                fontWeight: 700,
-                color: "var(--primary)",
-                background: "var(--primary-light)",
-              }}
-            >
-              {SORT_OPTIONS.map((so) => (
-                <option key={so.key} value={so.key}>
-                  {so.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Status Filter Dropdown */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Filter size={15} color="var(--text-muted)" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                padding: "9px 14px",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: "var(--text-main)",
-                background: "white",
-              }}
-            >
-              {STATUS_LIST.map((s) => (
-                <option key={s.key} value={s.key}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Orders Table */}
-      <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
-        <div className="table-container" style={{ border: "none" }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>AI Priority</th>
-                <th>Order Number</th>
-                <th>Recipient / Customer</th>
-                <th>Print Specifications</th>
-                <th>Fulfillment</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan="8" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
-                    No orders found matching your criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredOrders.map((o) => {
-                  const waLink = getCustomerWhatsAppLink(o);
-                  const p = o.aiPriority;
-                  const isProcessing = aiProcessingId === o.id;
-
-                  return (
-                    <tr key={o.id}>
-                      {/* AI Priority Column */}
-                      <td>
-                        <div 
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            fontSize: 11,
-                            fontWeight: 900,
-                            padding: "3px 8px",
-                            borderRadius: 6,
-                            color: p.color,
-                            background: p.bg,
-                            border: `1px solid ${p.border}`
-                          }}
-                          title={`Score: ${p.score}/100 • ${p.reason}`}
-                        >
-                          <span>{p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
-                          <span>{p.level} ({p.score})</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 3 }}>
-                          <Clock size={11} />
-                          <span>~{p.estMinutes}m print</span>
-                        </div>
-                      </td>
-
-                      <td>
-                        <div style={{ fontWeight: 800, color: "var(--text-main)" }}>{o.order_number}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
-                          <FormattedDate date={o.created_at} />
-                        </div>
-                        {o.priority === "URGENT" && (
-                          <span style={{ display: "inline-block", fontSize: 10, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "1px 6px", borderRadius: 4, marginTop: 4 }}>
-                            ⚡ VIP URGENT
-                          </span>
-                        )}
-                      </td>
-
-                      <td>
-                        <div style={{ fontWeight: 700 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          📞 {o.customer_phone || o.profiles?.phone || "No phone"}
-                        </div>
-                        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                          {waLink && (
-                            <a
-                              href={waLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#16a34a", fontWeight: 700 }}
-                            >
-                              <MessageCircle size={12} />
-                              <span>Customer</span>
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleSendAiWhatsAppAlert(o)}
-                            style={{ background: "none", border: "none", color: "var(--primary)", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
-                            title="Send AI Alert to Admin WhatsApp"
-                          >
-                            <Zap size={11} />
-                            <span>AI Alert</span>
-                          </button>
-                        </div>
-                      </td>
-
-                      <td>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>
-                          {o.paper_size} • {o.color_mode} • {o.sides}
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                          {o.page_count || 1} pgs • {o.copies} {o.copies === 1 ? "copy" : "copies"} • {o.paper_type}
-                        </div>
-                        {o.binding_type && o.binding_type !== "NONE" && (
-                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", marginTop: 2 }}>
-                            📚 {o.binding_type}
-                          </div>
-                        )}
-                      </td>
-
-                      <td>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>
-                          {o.delivery_mode === "PICKUP" ? "🏪 Store Pickup" : "🚚 Delivery"}
-                        </div>
-                        {o.address && (
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {o.address}
-                          </div>
-                        )}
-                      </td>
-
-                      <td style={{ fontWeight: 900, fontSize: 15 }}>
-                        ₹{o.total}
-                      </td>
-
-                      <td>
-                        <span className={`status-badge status-${o.status}`}>
-                          {o.status?.replaceAll("_", " ")}
-                        </span>
-                        {p.paymentCheck.status === "UNPAID" && (
-                          <div style={{ marginTop: 4 }}>
-                            <span style={{ display: "inline-block", fontSize: 10, fontWeight: 900, color: "#b45309", background: "#fef3c7", border: "1px solid #fde68a", padding: "2px 6px", borderRadius: 4 }}>
-                              ⚠️ NO PAYMENT YET
-                            </span>
-                          </div>
-                        )}
-                      </td>
-
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {/* 1. If customer submitted payment proof or UTR -> Allow AI Verify & Print */}
-                          {p.paymentCheck.canPrint && ["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(o.status) && (
-                            <button
-                              disabled={isProcessing}
-                              onClick={() => handleAiVerifyAndPrint(o)}
-                              className="btn btn-sm"
-                              style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", padding: "5px 10px", fontSize: 11, fontWeight: 800 }}
-                              title="1-Click AI Verify Real Payment Proof & Queue Print"
-                            >
-                              <Zap size={12} />
-                              <span>{isProcessing ? "Verifying..." : "AI Verify & Print"}</span>
-                            </button>
-                          )}
-
-                          {/* 2. If order is UNPAID (No screenshot/UTR) -> DO NOT ALLOW printing, provide WhatsApp payment reminder */}
-                          {p.paymentCheck.status === "UNPAID" && (
-                            <button
-                              type="button"
-                              onClick={() => handleSendPaymentReminder(o)}
-                              className="btn btn-sm"
-                              style={{ background: "#fffbeb", color: "#b45309", border: "1px solid #fde68a", padding: "5px 8px", fontSize: 11, fontWeight: 700 }}
-                              title="Send UPI payment reminder link to Customer on WhatsApp"
-                            >
-                              <MessageCircle size={12} color="#16a34a" />
-                              <span>Remind to Pay</span>
-                            </button>
-                          )}
-
-                          {o.status === "PRINTING" && (
-                            <button
-                              disabled={isProcessing}
-                              onClick={() => handleAiMarkReady(o)}
-                              className="btn btn-sm btn-success"
-                              style={{ padding: "5px 10px", fontSize: 11, fontWeight: 800 }}
-                              title="Mark order ready and notify customer"
-                            >
-                              <Check size={12} />
-                              <span>{isProcessing ? "Updating..." : "AI Mark Ready"}</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => setSelectedOrder(o)}
-                            className="btn btn-secondary btn-sm"
-                            style={{ padding: "5px 10px", fontSize: 11 }}
-                          >
-                            <Eye size={12} />
-                            <span>Details</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Order Processing Modal */}
-      {selectedOrder && (
-        <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <h2 style={{ fontSize: 20, fontWeight: 800 }}>{selectedOrder.order_number}</h2>
-                  {selectedOrder.priority === "EXPRESS" && (
-                    <span className="status-badge" style={{ background: "#fef3c7", color: "#b45309" }}>
-                      ⚡ EXPRESS
-                    </span>
-                  )}
-                </div>
-                <span className={`status-badge status-${selectedOrder.status}`} style={{ marginTop: 6 }}>
-                  {selectedOrder.status?.replaceAll("_", " ")}
+      {/* ========================================================= */}
+      {/* TAB 2: REAL-TIME USER ACTIONS TELEMETRY STREAM */}
+      {/* ========================================================= */}
+      {adminTab === "actions_stream" && (
+        <div className="no-print fast-pop-anim">
+          {/* Action Stream Controls */}
+          <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Activity size={20} color="#06b6d4" />
+                <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>
+                  Live Action Stream & Telemetry Feed
+                </h3>
+                <span style={{ background: "#ecfeff", color: "#0891b2", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid #a5f3fc" }}>
+                  {filteredActionLogs.length} Actions
                 </span>
               </div>
 
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button
-                  onClick={() => setInvoiceModalOrder(selectedOrder)}
-                  className="btn btn-sm"
-                  style={{ background: "#0f172a" }}
-                  title="View Official Tax Invoice with Scannable QR Code"
-                >
-                  <Receipt size={14} />
-                  <span>Tax Invoice & QR</span>
-                </button>
-
-                <button
-                  onClick={handlePrintJobSheet}
-                  className="btn btn-secondary btn-sm"
-                  title="Print Machine Operator Job Sheet"
-                >
-                  <Printer size={14} />
-                  <span>Job Ticket</span>
-                </button>
-
-                {getCustomerWhatsAppLink(selectedOrder) && (
-                  <a
-                    href={getCustomerWhatsAppLink(selectedOrder)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-whatsapp btn-sm"
-                  >
-                    <MessageCircle size={14} />
-                    <span>WhatsApp</span>
-                  </a>
-                )}
-
-                <button
-                  onClick={() => setSelectedOrder(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-light)", padding: 4 }}
-                >
-                  <X size={22} />
-                </button>
+              {/* Search in actions */}
+              <div style={{ position: "relative", minWidth: 240 }}>
+                <Search size={15} color="var(--text-muted)" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="text"
+                  placeholder="Search user, action, phone..."
+                  value={actionSearch}
+                  onChange={(e) => setActionSearch(e.target.value)}
+                  style={{ paddingLeft: 32, paddingTop: 6, paddingBottom: 6, fontSize: 13 }}
+                />
               </div>
             </div>
 
-            {/* Customer & Fulfillment Details */}
-            <div className="row" style={{ marginBottom: 20 }}>
-              <div style={{ background: "#f8fafc", padding: 14, borderRadius: "var(--radius-md)" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Recipient & Contact
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>
-                  {selectedOrder.customer_name || selectedOrder.profiles?.name || "Customer"}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-main)", marginTop: 2 }}>
-                  📞 {selectedOrder.customer_phone || selectedOrder.profiles?.phone || "N/A"}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-                  Fulfillment: <b>{selectedOrder.delivery_mode === "PICKUP" ? "Store Pickup" : "Doorstep Delivery"}</b>
-                </div>
-                {selectedOrder.address && (
-                  <div style={{ fontSize: 12, color: "var(--text-main)", marginTop: 6, background: "white", padding: 8, borderRadius: 6, border: "1px solid var(--border)" }}>
-                    📍 <b>Address:</b> {selectedOrder.address}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: 14, borderRadius: "var(--radius-md)" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Print Job Specifications
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>
-                  {selectedOrder.paper_size} | {selectedOrder.color_mode}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  {selectedOrder.page_count || 1} page(s) | {selectedOrder.sides} sided | {selectedOrder.paper_type} paper
-                </div>
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  Binding: <b>{selectedOrder.binding_type || "NONE"}</b>
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 900, color: "var(--primary)", marginTop: 4 }}>
-                  {selectedOrder.copies} Copies ({(selectedOrder.page_count || 1) * selectedOrder.copies} total pages) — Total ₹{selectedOrder.total}
-                </div>
-                {selectedOrder.notes && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, background: "white", padding: 6, borderRadius: 6 }}>
-                    <b>Note:</b> "{selectedOrder.notes}"
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* AI Order Inspector & Anti-Fraud Payment Panel */}
-            {(() => {
-              const p = selectedOrder.aiPriority || calculateOrderPriority(selectedOrder);
-              const isProcessing = aiProcessingId === selectedOrder.id;
-              const isUnpaid = p.paymentCheck.status === "UNPAID";
-
-              return (
-                <div style={{ marginBottom: 20, padding: "16px 18px", borderRadius: "var(--radius-md)", background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", border: "1px solid rgba(255,255,255,0.15)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Zap size={16} color="#facc15" />
-                      <span style={{ fontWeight: 900, fontSize: 14 }}>AI Order Inspector & Anti-Fraud Gate</span>
-                    </div>
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: p.bg, color: p.color, border: `1px solid ${p.border}`, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 }}>
-                      <span>{isUnpaid ? "⚠️" : p.level === "URGENT" ? "🔴" : p.level === "HIGH" ? "🟠" : p.level === "MEDIUM" ? "🔵" : "⚪"}</span>
-                      <span>{p.paymentCheck.status}: {p.level} ({p.score}/100)</span>
-                    </div>
-                  </div>
-
-                  {/* Unpaid Warning Banner */}
-                  {isUnpaid && (
-                    <div style={{ background: "rgba(220, 38, 38, 0.2)", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, color: "#fecaca", lineHeight: 1.5 }}>
-                      🛑 <b>PAYMENT NOT RECEIVED:</b> Customer has placed this order for <b>₹{selectedOrder.total}.00</b>, but has <b>NOT</b> uploaded a payment screenshot or 12-digit UPI UTR. <b>Do not print without receiving payment!</b>
-                    </div>
-                  )}
-
-                  {!isUnpaid && (
-                    <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.5, marginBottom: 12 }}>
-                      ⏱️ <b>Estimated Print Duration:</b> ~{p.estMinutes} mins • 💡 <b>Payment Status:</b> {p.paymentCheck.label}
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {/* If genuine proof is attached -> Allow AI Verify & Print */}
-                    {!isUnpaid && ["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
-                      <button
-                        disabled={isProcessing}
-                        onClick={() => handleAiVerifyAndPrint(selectedOrder)}
-                        className="btn btn-sm"
-                        style={{ background: "linear-gradient(135deg, #0284c7, #4f46e5)", color: "white", fontWeight: 800, border: "none" }}
-                      >
-                        <Zap size={13} />
-                        <span>{isProcessing ? "Processing..." : "⚡ AI Verify Real Payment & Queue Print"}</span>
-                      </button>
-                    )}
-
-                    {/* If unpaid -> Offer WhatsApp payment reminder */}
-                    {isUnpaid && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => handleSendPaymentReminder(selectedOrder)}
-                          className="btn btn-sm"
-                          style={{ background: "#22c55e", color: "white", fontWeight: 800, border: "none" }}
-                        >
-                          <MessageCircle size={13} />
-                          <span>Send WhatsApp Payment Reminder</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isProcessing}
-                          onClick={() => {
-                            if (confirm(`Confirm customer paid ₹${selectedOrder.total} in CASH directly at the store counter?`)) {
-                              handleAiVerifyAndPrint(selectedOrder, { isCashOverride: true });
-                            }
-                          }}
-                          className="btn btn-secondary btn-sm"
-                          style={{ background: "rgba(255,255,255,0.1)", color: "#f8fafc", borderColor: "rgba(255,255,255,0.2)", fontSize: 11 }}
-                          title="Override: Customer paid cash in person at shop counter"
-                        >
-                          <span>💵 Cash Paid at Counter</span>
-                        </button>
-                      </>
-                    )}
-
-                    {selectedOrder.status === "PRINTING" && (
-                      <button
-                        disabled={isProcessing}
-                        onClick={() => handleAiMarkReady(selectedOrder)}
-                        className="btn btn-sm btn-success"
-                        style={{ fontWeight: 800 }}
-                      >
-                        <Check size={13} />
-                        <span>{isProcessing ? "Updating..." : "🤖 AI Mark Ready & Alert Customer"}</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => handleSendAiWhatsAppAlert(selectedOrder)}
-                      className="btn btn-secondary btn-sm"
-                      style={{ background: "rgba(255,255,255,0.12)", color: "white", borderColor: "rgba(255,255,255,0.25)", fontSize: 11 }}
-                      title="Resend structured AI alert to Store Admin WhatsApp"
-                    >
-                      <MessageCircle size={13} color="#22c55e" />
-                      <span>Send AI Alert to Admin WhatsApp</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Uploaded Documents List */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <FileText size={16} color="var(--primary)" />
-                <span>Uploaded Documents ({selectedOrder.order_files?.length || 0})</span>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {selectedOrder.order_files?.map((file) => (
-                  <div
-                    key={file.id}
+            {/* Category Filter Pills */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {ACTION_CATEGORIES.map((cat) => {
+                const isSelected = actionFilter === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => setActionFilter(cat.key)}
                     style={{
+                      background: isSelected ? "var(--primary)" : "#f1f5f9",
+                      color: isSelected ? "white" : "var(--text-main)",
+                      border: "none",
+                      padding: "6px 12px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: isSelected ? 800 : 600,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Action Log Items Feed */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {filteredActionLogs.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+                <Activity size={32} color="#cbd5e1" style={{ margin: "0 auto 8px" }} />
+                <div style={{ fontWeight: 700 }}>No user actions match this filter</div>
+              </div>
+            ) : (
+              filteredActionLogs.map((action, index) => {
+                let badgeColor = "#4f46e5";
+                let badgeBg = "#eef2ff";
+                let icon = <Activity size={15} />;
+
+                if (action.actionType === "ORDER_PLACED") {
+                  badgeColor = "#16a34a";
+                  badgeBg = "#f0fdf4";
+                  icon = <ShoppingBag size={15} />;
+                } else if (action.actionType === "PAYMENT_SUBMITTED") {
+                  badgeColor = "#0284c7";
+                  badgeBg = "#f0f9ff";
+                  icon = <IndianRupee size={15} />;
+                } else if (action.actionType === "DOC_UPLOAD") {
+                  badgeColor = "#7c3aed";
+                  badgeBg = "#faf5ff";
+                  icon = <FileText size={15} />;
+                } else if (action.actionType === "LOCATION_SELECT") {
+                  badgeColor = "#ea580c";
+                  badgeBg = "#fff7ed";
+                  icon = <MapPin size={15} />;
+                } else if (action.actionType === "ORDER_CANCELLED") {
+                  badgeColor = "#dc2626";
+                  badgeBg = "#fef2f2";
+                  icon = <XCircle size={15} />;
+                }
+
+                return (
+                  <div
+                    key={index}
+                    className="fast-pop-anim"
+                    style={{
+                      background: "white",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "14px 18px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      background: "white",
-                      border: "1px solid var(--border)",
-                      padding: "10px 14px",
-                      borderRadius: "var(--radius-md)",
+                      flexWrap: "wrap",
+                      gap: 12,
+                      boxShadow: "var(--shadow-sm)"
                     }}
                   >
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 10 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{file.original_name}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-light)" }}>
-                        {file.size ? (file.size / 1024 / 1024).toFixed(2) + " MB" : ""}
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1, minWidth: 260 }}>
+                      <div style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: "50%",
+                        background: badgeBg,
+                        color: badgeColor,
+                        display: "grid",
+                        placeItems: "center",
+                        flexShrink: 0,
+                        border: `1px solid ${badgeColor}33`
+                      }}>
+                        {icon}
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: "var(--text-main)" }}>
+                            {action.actionTitle}
+                          </span>
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 900,
+                            background: badgeBg,
+                            color: badgeColor,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            textTransform: "uppercase"
+                          }}>
+                            {action.actionType?.replaceAll("_", " ")}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span>👤 <b>{action.userName || "Guest"}</b></span>
+                          {action.userPhone && <span>📞 {action.userPhone}</span>}
+                          <span>•</span>
+                          <span>🧭 <code>{action.pageUrl || "/"}</code></span>
+                          <span>•</span>
+                          <span>💻 {action.deviceInfo || "Device"}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleDownload("documents", file.storage_path, file.original_name)}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      <Download size={14} />
-                      <span>Download</span>
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 11, color: "var(--text-light)", fontWeight: 600 }}>
+                        <FormattedDate date={action.timestamp || new Date().toISOString()} />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 3: STANDARD ORDER MANAGEMENT QUEUE */}
+      {/* ========================================================= */}
+      {adminTab === "orders" && (
+        <div className="fast-pop-anim">
+          {/* KPI Summary Cards */}
+          <div className="stats-grid no-print">
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: "var(--primary-light)", color: "var(--primary)" }}>
+                <ShoppingBag size={24} />
+              </div>
+              <div>
+                <div className="stat-value">{orders.length}</div>
+                <div className="stat-label">Total Orders</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: "var(--warning-bg)", color: "var(--warning)" }}>
+                <Clock size={24} />
+              </div>
+              <div>
+                <div className="stat-value">{pendingPaymentCount}</div>
+                <div className="stat-label">Pending Review</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: "#ede9fe", color: "#6d28d9" }}>
+                <Printer size={24} />
+              </div>
+              <div>
+                <div className="stat-value">{inProgressCount}</div>
+                <div className="stat-label">In Production</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
+                <IndianRupee size={24} />
+              </div>
+              <div>
+                <div className="stat-value">₹{totalRevenue}</div>
+                <div className="stat-label">Store Revenue</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search, Status & AI Sort Filters */}
+          <div className="card no-print" style={{ marginBottom: 24, padding: "18px 20px" }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ position: "relative", minWidth: 260, flex: 1 }}>
+                <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="text"
+                  placeholder="Search by order #, recipient name, phone, address..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    paddingLeft: 38,
+                    paddingRight: 14,
+                    paddingTop: 9,
+                    paddingBottom: 9,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: 14,
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    padding: "9px 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "var(--primary)",
+                    background: "var(--primary-light)",
+                  }}
+                >
+                  {SORT_OPTIONS.map((so) => (
+                    <option key={so.key} value={so.key}>
+                      {so.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Filter size={15} color="var(--text-muted)" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  style={{
+                    padding: "9px 14px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    color: "var(--text-main)",
+                    background: "white",
+                  }}
+                >
+                  {STATUS_LIST.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Orders Table */}
+          <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="table-container" style={{ border: "none" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>AI Priority</th>
+                    <th>Order Number</th>
+                    <th>Recipient / Customer</th>
+                    <th>Print Specifications</th>
+                    <th>Fulfillment</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
+                        No orders found matching your criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOrders.map((o) => {
+                      const p = o.aiPriority;
+                      return (
+                        <tr key={o.id}>
+                          <td>
+                            <span style={{
+                              fontSize: 11,
+                              fontWeight: 900,
+                              background: p?.urgency === "HIGH" ? "#fee2e2" : "#f1f5f9",
+                              color: p?.urgency === "HIGH" ? "#b91c1c" : "#475569",
+                              padding: "2px 6px",
+                              borderRadius: 4
+                            }}>
+                              {p?.score || 50} pts
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 800, fontFamily: "monospace" }}>{o.order_number}</td>
+                          <td>
+                            <div style={{ fontWeight: 700 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{o.customer_phone || o.profiles?.phone || "N/A"}</div>
+                          </td>
+                          <td style={{ fontSize: 12 }}>
+                            <b>{o.paper_size}</b> • {o.color_mode === "COLOR" ? "Color" : "B&W"} • {o.page_count}pgs × {o.copies}cps
+                          </td>
+                          <td style={{ fontSize: 12 }}>
+                            {o.delivery_mode === "DELIVERY" ? "🚚 Boisar Delivery (+₹30)" : "🏪 Store Pickup"}
+                          </td>
+                          <td style={{ fontWeight: 900, color: "var(--primary)" }}>₹{o.total}.00</td>
+                          <td>
+                            <span className={`status-badge status-${o.status}`}>
+                              {o.status?.replaceAll("_", " ")}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              onClick={() => setSelectedOrder(o)}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              <Eye size={13} />
+                              <span>Manage</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Session History Inspector Modal */}
+      {selectedUserInspect && (
+        <div className="modal-backdrop" onClick={() => setSelectedUserInspect(null)}>
+          <div
+            className="card"
+            style={{ maxWidth: 640, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #4f46e5, #06b6d4)", color: "white", display: "grid", placeItems: "center", fontWeight: 900 }}>
+                  {(selectedUserInspect.name || "G")[0]}
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>{selectedUserInspect.name || "Guest Visitor"}</h3>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Session: <code>{selectedUserInspect.sessionId}</code></div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedUserInspect(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 16, fontSize: 13 }}>
+              <div>📱 <b>Device:</b> {selectedUserInspect.deviceInfo || "Desktop Browser"}</div>
+              <div style={{ marginTop: 4 }}>📍 <b>Location:</b> {selectedUserInspect.locality || "Boisar, Maharashtra"}</div>
+              <div style={{ marginTop: 4 }}>🧭 <b>Current Route:</b> <code>{selectedUserInspect.currentPath || "/"}</code></div>
+              <div style={{ marginTop: 4 }}>🟢 <b>Online Since:</b> <FormattedDate date={selectedUserInspect.onlineAt || new Date().toISOString()} /></div>
+            </div>
+
+            <h4 style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>
+              Recent Action Timeline ({actionLogs.filter((a) => a.sessionId === selectedUserInspect.sessionId).length} events)
+            </h4>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {actionLogs
+                .filter((a) => a.sessionId === selectedUserInspect.sessionId)
+                .map((act, i) => (
+                  <div key={i} style={{ padding: "8px 12px", background: "white", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{act.actionTitle}</div>
+                    <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
+                      <FormattedDate date={act.timestamp} /> • <code>{act.pageUrl}</code>
+                    </div>
                   </div>
                 ))}
-              </div>
             </div>
-
-            {/* Payment Proof & Anti-Fraud UTR Verification */}
-            <div style={{ marginBottom: 24, padding: 16, border: "1px solid var(--border)", borderRadius: "var(--radius-md)", background: "#fafafa" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <ShieldCheck size={17} color="var(--primary)" />
-                  <span>Anti-Fraud Payment Verification</span>
-                </div>
-                {selectedOrder.upi_utr && (
-                  <span style={{ fontSize: 11, background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: 4, fontWeight: 800 }}>
-                    UTR SUBMITTED
-                  </span>
-                )}
-              </div>
-
-              {/* 12-Digit UTR Display */}
-              <div style={{ background: "white", padding: 12, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>
-                  Customer UPI Ref / 12-Digit UTR
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                  <div style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 800, color: selectedOrder.upi_utr ? "var(--primary)" : "var(--text-light)", letterSpacing: 1 }}>
-                    {selectedOrder.upi_utr || "No UTR provided"}
-                  </div>
-                  {selectedOrder.upi_utr && (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedOrder.upi_utr);
-                        alert("Copied UTR: " + selectedOrder.upi_utr + " to clipboard. Paste into your bank/merchant app to verify.");
-                      }}
-                      className="btn btn-secondary btn-sm"
-                      title="Copy UTR to verify in Merchant Bank App"
-                    >
-                      <Copy size={13} />
-                      <span>Copy UTR</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {selectedOrder.payment_proof_path ? (
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    onClick={async () => {
-                      const url = await getDownloadUrl("payment-proofs", selectedOrder.payment_proof_path);
-                      setPreviewImage(url);
-                    }}
-                    className="btn btn-secondary btn-sm"
-                  >
-                    <Eye size={14} />
-                    <span>Inspect Screenshot</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (confirm(`Flag order #${selectedOrder.order_number} payment as FAKE / UNVERIFIED screenshot?\nThis will notify the customer to re-upload genuine proof.`)) {
-                        handleStatusChange(
-                          selectedOrder.id,
-                          "CANCELLED",
-                          `🚨 FAKE_SCREENSHOT_DETECTED: Payment screenshot / UTR (${selectedOrder.upi_utr || "N/A"}) rejected as uncredited or fake. Customer must re-upload genuine payment proof.`,
-                          true
-                        );
-                        // Auto-dispatch customer alert on WhatsApp
-                        const custPhone = selectedOrder.customer_phone || selectedOrder.profiles?.phone;
-                        if (custPhone) {
-                          const reuploadUrl = typeof window !== "undefined" ? `${window.location.origin}/orders/${selectedOrder.id}` : `https://crazy-printing-center.vercel.app/orders/${selectedOrder.id}`;
-                          const fakeAlertMsg =
-                            `🚨 *PAYMENT VERIFICATION REJECTED*\n` +
-                            `*Dhruvang Crazy Printing Center*\n` +
-                            `------------------------------------\n` +
-                            `📄 *Order:* #${selectedOrder.order_number || "CPC"}\n` +
-                            `⚠️ *Issue:* The uploaded payment screenshot / UTR (*${selectedOrder.upi_utr || "Submitted Screenshot"}*) could not be verified in our store bank account.\n` +
-                            `💰 *Amount Pending:* ₹${selectedOrder.total}.00\n\n` +
-                            `👉 *Please re-upload your genuine payment screenshot / 12-digit UPI UTR here to resume printing:*\n` +
-                            `🔗 ${reuploadUrl}\n\n` +
-                            `📞 Store Cashier Helpline: +91 8857871669`;
-                          openWhatsAppChat(custPhone, fakeAlertMsg);
-                        }
-                      }
-                    }}
-                    className="btn btn-sm"
-                    style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" }}
-                  >
-                    <ShieldAlert size={14} />
-                    <span>Reject / Fake Screenshot</span>
-                  </button>
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  No payment screenshot uploaded yet.
-                </div>
-              )}
-            </div>
-
-            {/* Status Update Actions with Forward-Only Lifecycle & Delivery Lock */}
-            {selectedOrder.status === "DELIVERED" ? (
-              <div style={{ background: "#ecfdf5", border: "2px solid #a7f3d0", padding: "16px 20px", borderRadius: "var(--radius-lg)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#10b981", color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <CheckCircle2 size={22} />
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 900, fontSize: 15, color: "#065f46" }}>
-                        Order Fulfilled & Delivered Successfully ✅
-                      </div>
-                      <div style={{ fontSize: 12, color: "#047857", marginTop: 2 }}>
-                        This job is completed. Reverting backwards to "Out for Delivery" or "Printing" is locked to protect order authenticity.
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    disabled={updating}
-                    onClick={() => {
-                      if (confirm("Are you sure you want to REOPEN this completed order? (e.g. for customer reprint/re-delivery)")) {
-                        handleStatusChange(selectedOrder.id, "PRINTING", "Order reopened by Admin for reprinting", true);
-                      }
-                    }}
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: 12, borderColor: "#a7f3d0", color: "#047857" }}
-                    title="Reopen order if customer requested a reprint"
-                  >
-                    <span>Reopen for Reprint ↻</span>
-                  </button>
-                </div>
-              </div>
-            ) : selectedOrder.status === "CANCELLED" ? (
-              <div style={{ background: "#fef2f2", border: "2px solid #fecaca", padding: "16px 20px", borderRadius: "var(--radius-lg)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#ef4444", color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <XCircle size={22} />
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 900, fontSize: 15, color: "#991b1b" }}>
-                        Order Cancelled
-                      </div>
-                      <div style={{ fontSize: 12, color: "#b91c1c", marginTop: 2 }}>
-                        This order is cancelled and inactive.
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    disabled={updating}
-                    onClick={() => {
-                      if (confirm("Restore this order back to Verified Payment stage?")) {
-                        handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", "Order restored from cancelled by Admin", true);
-                      }
-                    }}
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: 12, borderColor: "#fecaca", color: "#991b1b" }}
-                  >
-                    <span>Restore Order ↻</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: "#f8fafc", padding: 18, borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "var(--text-main)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>Advance Order Status (Current: <b>{selectedOrder.status?.replaceAll("_", " ")}</b>)</span>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Sequential forward workflow</span>
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <input
-                    type="text"
-                    placeholder="Optional custom message for customer (e.g. 'Printed & packed ready for pickup')"
-                    value={statusMsg}
-                    onChange={(e) => setStatusMsg(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      fontSize: 13,
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-md)",
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {["ORDER_RECEIVED", "PAYMENT_SUBMITTED"].includes(selectedOrder.status) && (
-                    <button
-                      disabled={updating}
-                      onClick={() => handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED")}
-                      className="btn btn-sm"
-                      style={{ background: "#0284c7" }}
-                    >
-                      <CheckCircle2 size={14} />
-                      <span>Verify Payment</span>
-                    </button>
-                  )}
-
-                  {["ORDER_RECEIVED", "PAYMENT_SUBMITTED", "PAYMENT_VERIFIED"].includes(selectedOrder.status) && (
-                    <button
-                      disabled={updating}
-                      onClick={() => handleStatusChange(selectedOrder.id, "PRINTING")}
-                      className="btn btn-sm"
-                      style={{ background: "#7c3aed" }}
-                    >
-                      <Printer size={14} />
-                      <span>Start Printing</span>
-                    </button>
-                  )}
-
-                  {["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(selectedOrder.status) && (
-                    <button
-                      disabled={updating}
-                      onClick={() => handleStatusChange(selectedOrder.id, "READY")}
-                      className="btn btn-sm"
-                      style={{ background: "#16a34a" }}
-                    >
-                      <Check size={14} />
-                      <span>Mark Ready for Pickup/Dispatch</span>
-                    </button>
-                  )}
-
-                  {selectedOrder.status === "READY" && selectedOrder.delivery_mode === "DELIVERY" && (
-                    <button
-                      disabled={updating}
-                      onClick={() => handleStatusChange(selectedOrder.id, "OUT_FOR_DELIVERY")}
-                      className="btn btn-sm"
-                      style={{ background: "#ea580c" }}
-                    >
-                      <Truck size={14} />
-                      <span>Out For Delivery</span>
-                    </button>
-                  )}
-
-                  {["READY", "OUT_FOR_DELIVERY"].includes(selectedOrder.status) && (
-                    <button
-                      disabled={updating}
-                      onClick={() => {
-                        if (confirm(`Confirm order #${selectedOrder.order_number} has been DELIVERED / handed over to ${selectedOrder.customer_name || "customer"}?`)) {
-                          handleStatusChange(selectedOrder.id, "DELIVERED");
-                        }
-                      }}
-                      className="btn btn-sm btn-success"
-                    >
-                      <CheckCircle2 size={14} />
-                      <span>Mark Delivered & Handed Over ✅</span>
-                    </button>
-                  )}
-
-                  <button
-                    disabled={updating}
-                    onClick={() => {
-                      if (confirm(`Are you sure you want to CANCEL order #${selectedOrder.order_number}?`)) {
-                        handleStatusChange(selectedOrder.id, "CANCELLED");
-                      }
-                    }}
-                    className="btn btn-sm btn-danger"
-                    style={{ marginLeft: "auto" }}
-                  >
-                    <XCircle size={14} />
-                    <span>Cancel Order</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-              {/* WhatsApp Live Update & Bill Action Bar */}
-              <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <a
-                  href={getCustomerWhatsAppLink(selectedOrder, selectedOrder.status) || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-whatsapp btn-sm"
-                  style={{ flex: 1, justifyContent: "center", textDecoration: "none" }}
-                >
-                  <MessageCircle size={15} />
-                  <span>📲 Send Live WhatsApp Update ({selectedOrder.status?.replaceAll("_", " ")})</span>
-                </a>
-
-                <button
-                  type="button"
-                  onClick={() => setInvoiceModalOrder(selectedOrder)}
-                  className="btn btn-sm"
-                  style={{ background: "#0f172a", color: "white" }}
-                  title="Open Official Tax Invoice to send PDF to WhatsApp or download"
-                >
-                  <Receipt size={14} />
-                  <span>🧾 Send PDF Bill to WhatsApp</span>
-                </button>
-              </div>
           </div>
         </div>
       )}
 
-      {/* Image Preview Zoom Modal */}
-      {previewImage && (
-        <div className="modal-backdrop" onClick={() => setPreviewImage(null)}>
-          <div style={{ maxWidth: 600, maxHeight: "90vh", background: "white", padding: 16, borderRadius: "var(--radius-lg)", position: "relative" }}>
-            <button
-              onClick={() => setPreviewImage(null)}
-              style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: "50%", padding: 6, cursor: "pointer" }}
-            >
-              <X size={18} />
-            </button>
-            <img src={previewImage} alt="Payment Proof" style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain", borderRadius: 8 }} />
+      {/* Manage Order Modal */}
+      {selectedOrder && (
+        <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
+          <div
+            className="card"
+            style={{ maxWidth: 840, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 900 }}>Manage Order #{selectedOrder.order_number}</h2>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Placed on <FormattedDate date={selectedOrder.created_at} /></div>
+              </div>
+
+              <button
+                onClick={() => setSelectedOrder(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Status Transition Row */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, display: "block", marginBottom: 8 }}>
+                Change Production / Delivery Status:
+              </label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {STATUS_LIST.filter((s) => s.key !== "ALL").map((st) => {
+                  const isCurrent = selectedOrder.status === st.key;
+                  return (
+                    <button
+                      key={st.key}
+                      disabled={updating || isCurrent}
+                      onClick={() => handleStatusChange(selectedOrder.id, st.key)}
+                      style={{
+                        background: isCurrent ? "var(--primary)" : "#f1f5f9",
+                        color: isCurrent ? "white" : "var(--text-main)",
+                        border: "none",
+                        padding: "7px 12px",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: isCurrent ? "default" : "pointer"
+                      }}
+                    >
+                      {st.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => setInvoiceModalOrder(selectedOrder)}
+                className="btn btn-sm"
+                style={{ background: "#0f172a", color: "white" }}
+              >
+                <Receipt size={14} />
+                <span>View Official Tax Invoice</span>
+              </button>
+
+              <a
+                href={buildWhatsAppLink(selectedOrder.customer_phone, buildOrderStatusMessage(selectedOrder, selectedOrder.status))}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-whatsapp btn-sm"
+              >
+                <MessageCircle size={14} />
+                <span>Send WhatsApp Live Update</span>
+              </a>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Official Tax Invoice & QR Scanner Modal */}
+      {/* Tax Invoice Modal */}
       {invoiceModalOrder && (
         <div className="modal-backdrop" onClick={() => setInvoiceModalOrder(null)}>
           <div style={{ maxWidth: 840, width: "100%", maxHeight: "95vh", overflowY: "auto", position: "relative" }} onClick={(e) => e.stopPropagation()}>

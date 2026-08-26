@@ -444,6 +444,21 @@ export default function OfficialTaxInvoice({ order, proofUrl, isPublicView = fal
                   <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700 }}>₹20.00</td>
                 </tr>
               )}
+
+              {order.delivery_mode === "DELIVERY" && (
+                <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  <td style={{ padding: "10px 12px", fontWeight: 700, color: "#64748b" }}>
+                    {order.priority === "EXPRESS" ? 4 : 3}
+                  </td>
+                  <td style={{ padding: "10px 12px" }}>
+                    <div style={{ fontWeight: 700, color: "#0369a1" }}>🚚 Doorstep Delivery (Boisar, PIN 401501)</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>Direct delivery to customer destination</div>
+                  </td>
+                  <td style={{ padding: "10px 12px", textAlign: "center" }}>₹30.00</td>
+                  <td style={{ padding: "10px 12px", textAlign: "center" }}>1 trip</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700 }}>₹30.00</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

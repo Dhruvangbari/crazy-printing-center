@@ -269,13 +269,22 @@ export default function Home() {
                 </div>
                 <div className="field" style={{ marginBottom: 0 }}>
                   <label style={{ fontSize: 12 }}>WhatsApp Mobile Number <span style={{ color: "var(--danger)" }}>*</span></label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 8857871669"
-                    value={estPhone}
-                    onChange={(e) => setEstPhone(e.target.value)}
-                    style={{ fontSize: 13, padding: "8px 10px" }}
-                  />
+                  <div className="phone-input-group" style={{ height: 36 }}>
+                    <div className="phone-prefix-badge" style={{ padding: "0 8px", fontSize: 12 }}>
+                      <span>🇮🇳</span>
+                      <span>+91</span>
+                    </div>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      placeholder="8857871669"
+                      value={estPhone}
+                      onChange={(e) => setEstPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      style={{ fontSize: 13, padding: "6px 10px" }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

@@ -1610,3 +1610,164 @@ input:focus, select:focus, textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================= */
+/* CRAZY ORDER FLOW & ACID INPUT ENHANCEMENTS */
+/* ========================================================= */
+
+/* Indian Phone Input Group */
+.phone-input-group {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: white;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.phone-input-group:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.phone-prefix-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  background: #f1f5f9;
+  border-right: 1px solid var(--border);
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-main);
+  user-select: none;
+}
+
+.phone-input-group input {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  flex: 1;
+}
+
+/* Step Wizard Progress Bar */
+.order-step-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 18px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.order-step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.order-step-item.active {
+  color: var(--primary);
+}
+
+.order-step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  transition: all 0.2s ease;
+}
+
+.order-step-item.active .order-step-num {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 0 10px rgba(79, 70, 229, 0.4);
+}
+
+.order-step-item.completed .order-step-num {
+  background: #10b981;
+  color: white;
+}
+
+.order-step-divider {
+  flex: 1;
+  height: 2px;
+  background: #e2e8f0;
+  min-width: 16px;
+  border-radius: 2px;
+}
+
+/* Boisar Map Radar Pulse Animation */
+@keyframes boisarRadarPulse {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  50% { transform: scale(1.05); opacity: 0.5; }
+  100% { transform: scale(0.95); opacity: 0.9; }
+}
+
+@keyframes fastPop {
+  0% { transform: scale(0.92); opacity: 0; }
+  70% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes laserShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.fast-pop-anim {
+  animation: fastPop 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Serviceability Banner Zomato Style */
+.zomato-service-banner {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: fastPop 0.3s ease-out;
+}
+
+.zomato-unserviceable-banner {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: fastPop 0.3s ease-out;
+}
+
+/* Confetti Container */
+.celebrate-confetti-canvas {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999;
+}

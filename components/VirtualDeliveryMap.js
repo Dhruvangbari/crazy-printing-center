@@ -212,7 +212,7 @@ export default function VirtualDeliveryMap({ order }) {
           <div style={{ color: "white", fontSize: 12, fontWeight: 700, marginTop: 6, textShadow: "0 1px 4px black", whiteSpace: "nowrap" }}>
             Dhruvang Crazy Printing
           </div>
-          <div style={{ color: "#94a3b8", fontSize: 10 }}>Origin Hub</div>
+          <div style={{ color: "#38bdf8", fontSize: 10, fontWeight: 700 }}>Boisar Hub (401501)</div>
         </div>
 
         {/* Live Delivery Vehicle Marker (Moving along the route) */}

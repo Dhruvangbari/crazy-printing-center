@@ -3,6 +3,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import WebNotificationListener from "../components/WebNotificationListener";
 import BetaTestingNotice from "../components/BetaTestingNotice";
+import LiveUserTracker from "../components/LiveUserTracker";
 
 export const metadata = {
   title: "DHRUVANG CRAZY PRINTING CENTER — Fast Online Document & Xerox Printing",
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
         <Footer />
         <BetaTestingNotice />
         <WebNotificationListener />
+        <LiveUserTracker />
       </body>
     </html>
   );
