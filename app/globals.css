@@ -1764,6 +1764,12 @@ input:focus, select:focus, textarea:focus {
   animation: fastPop 0.3s ease-out;
 }
 
+@keyframes laserProgress {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+
 /* Confetti Container */
 .celebrate-confetti-canvas {
   position: fixed;

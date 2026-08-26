@@ -392,17 +392,19 @@ export default function Order() {
       return;
     }
 
-    const processed = [];
-    for (const f of validFiles) {
-      const detectedPages = await countDocumentPages(f);
-      processed.push({
-        file: f,
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        pages: detectedPages,
-      });
-    }
+    const processed = await Promise.all(
+      validFiles.map(async (f) => {
+        const detectedPages = await countDocumentPages(f);
+        return {
+          file: f,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          pages: detectedPages,
+        };
+      })
+    );
+
     setFiles((prev) => [...prev, ...processed]);
     setDetectingPages(false);
     logUserAction("DOC_UPLOAD", `Attached ${processed.length} Document(s) (${processed.map(p => p.name).join(", ")})`, {
@@ -537,26 +539,24 @@ export default function Order() {
         status: "ORDER_RECEIVED",
       };
 
-      // Upload Documents safely
-      const uploadedFiles = [];
+      // Parallel concurrent file uploads for lightning-fast speed
       const tempOrderId = "temp-" + Date.now();
-
-      for (const f of files) {
-        const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${currentUser.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
-
-        let u = await s.storage.from("documents").upload(path, f.file);
-        if (u.error) {
-          console.warn("Storage upload warning:", u.error);
-        }
-
-        uploadedFiles.push({
-          original_name: f.name,
-          storage_path: path,
-          mime_type: f.type,
-          size: f.size || 0,
-        });
-      }
+      const uploadedFiles = await Promise.all(
+        files.map(async (f) => {
+          const cleanName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${currentUser.id}/${tempOrderId}/${Date.now()}-${cleanName}`;
+          const u = await s.storage.from("documents").upload(path, f.file);
+          if (u.error) {
+            console.warn("Storage upload warning:", u.error);
+          }
+          return {
+            original_name: f.name,
+            storage_path: path,
+            mime_type: f.type,
+            size: f.size || 0,
+          };
+        })
+      );
 
       // 1. Try atomic ACID stored procedure
       let order = null;
@@ -615,7 +615,7 @@ export default function Order() {
         });
       }
 
-      // Trigger AI Order Agent to alert Admin in background
+      // Trigger AI Order Agent in background without blocking
       try {
         fetch("/api/ai/notify-admin", {
           method: "POST",
@@ -642,10 +642,10 @@ export default function Order() {
         copies: order.copies,
       });
 
-      // Fast, smooth redirect to order tracking page (Zero unwanted WhatsApp popups)
+      // Ultra-rapid instant redirect to order tracking (120ms)
       setTimeout(() => {
         router.push(`/orders/${order.id}`);
-      }, 450);
+      }, 120);
     } catch (unexpected) {
       setErr(unexpected.message || "An unexpected error occurred.");
       setLoading(false);
@@ -654,6 +654,71 @@ export default function Order() {
 
   return (
     <main className="wrap">
+      {/* Superfast Order Confirmation HUD Overlay */}
+      {loading && (
+        <div className="modal-backdrop" style={{ zIndex: 99999, background: "rgba(15, 23, 42, 0.88)", backdropFilter: "blur(12px)" }}>
+          <div style={{
+            background: "#0f172a",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            borderRadius: 20,
+            padding: "30px 32px",
+            maxWidth: 420,
+            width: "90%",
+            textAlign: "center",
+            color: "white",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+            animation: "fastPop 0.2s ease-out"
+          }}>
+            <div style={{
+              width: 58,
+              height: 58,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #10b981, #06b6d4)",
+              display: "grid",
+              placeItems: "center",
+              margin: "0 auto 14px",
+              boxShadow: "0 0 24px rgba(16, 185, 129, 0.6)",
+              animation: "pulseGlow 1s infinite"
+            }}>
+              <Zap size={32} color="white" />
+            </div>
+
+            <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 4, letterSpacing: -0.3 }}>
+              Locking Order & Reserving Queue ⚡
+            </h3>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 18 }}>
+              Parallel uploading documents and dispatching to Boisar hub...
+            </p>
+
+            {/* Rapid Animated Laser Progress Bar */}
+            <div style={{
+              width: "100%",
+              height: 8,
+              background: "rgba(255, 255, 255, 0.1)",
+              borderRadius: 999,
+              overflow: "hidden",
+              position: "relative"
+            }}>
+              <div style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: "100%",
+                background: "linear-gradient(90deg, #4f46e5, #06b6d4, #10b981)",
+                borderRadius: 999,
+                animation: "laserProgress 0.6s ease-in-out infinite"
+              }} />
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 11, color: "#cbd5e1", fontWeight: 700 }}>
+              <span>📄 {files.length} Document(s) Parallel Sync</span>
+              <span style={{ color: "#38bdf8" }}>⚡ Instant Confirmation</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Breadcrumb */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
         <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--text-muted)", fontSize: 13, fontWeight: 600 }}>
