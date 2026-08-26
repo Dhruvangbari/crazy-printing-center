@@ -92,6 +92,16 @@ export default function Footer() {
             <Clock size={12} color="#38bdf8" />
             <span>Store Counter Hours: 8 AM – 10 PM</span>
           </div>
+
+          <a 
+            href="https://www.google.com/maps/dir/?api=1&destination=19.787653,72.694511"
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11.5, color: "#38bdf8", display: "flex", alignItems: "center", gap: 5, textDecoration: "none", marginTop: 6 }}
+          >
+            <MapPin size={12} color="#38bdf8" />
+            <span>Store Location: Boisar (19.787653, 72.694511) 📍</span>
+          </a>
         </div>
       </div>
 

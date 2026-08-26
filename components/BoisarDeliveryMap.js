@@ -132,16 +132,16 @@ export default function BoisarDeliveryMap({
 
       {/* Visual Interactive Map Canvas */}
       <div style={{ position: "relative", height: 220, overflow: "hidden", background: "#0b132b" }}>
-        {/* OpenStreetMap Live Interactive Embed for Boisar */}
+        {/* OpenStreetMap Live Interactive Embed for Crazy Print Store Location */}
         <iframe
-          title="Boisar Maharashtra 401501 Service Area"
+          title="Crazy Print Store Location 19.787653, 72.694511 Boisar"
           width="100%"
           height="100%"
           frameBorder="0"
           scrolling="no"
           marginHeight="0"
           marginWidth="0"
-          src="https://www.openstreetmap.org/export/embed.html?bbox=72.7100%2C19.7700%2C72.8000%2C19.8350&amp;layer=mapnik&amp;marker=19.8020%2C72.7548"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=72.6600%2C19.7600%2C72.7400%2C19.8200&amp;layer=mapnik&amp;marker=19.787653%2C72.694511"
           style={{
             filter: "invert(90%) hue-rotate(180deg) brightness(90%) contrast(110%)",
             opacity: 0.85,
@@ -164,9 +164,9 @@ export default function BoisarDeliveryMap({
           padding: 12
         }}>
           {/* Top Info Strip */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", pointerEvents: "auto" }}>
             <div style={{
-              background: "rgba(15, 23, 42, 0.88)",
+              background: "rgba(15, 23, 42, 0.92)",
               backdropFilter: "blur(8px)",
               padding: "6px 12px",
               borderRadius: 8,
@@ -178,25 +178,31 @@ export default function BoisarDeliveryMap({
               gap: 6
             }}>
               <Store size={14} color="#38bdf8" />
-              <span>Shop Hub: <b>Dhruvang Crazy Printing, Boisar West</b></span>
+              <span>Shop Hub: <b>Dhruvang Crazy Printing Center</b></span>
             </div>
 
-            <div style={{
-              background: "rgba(15, 23, 42, 0.88)",
-              backdropFilter: "blur(8px)",
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              fontSize: 11,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              color: "#38bdf8"
-            }}>
-              <Clock size={13} />
-              <span>Est. Transit: <b>{activeLocalityData.time}</b></span>
-            </div>
+            <a
+              href="https://www.google.com/maps/dir/?api=1&destination=19.787653,72.694511"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
+                color: "white",
+                padding: "6px 12px",
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                textDecoration: "none",
+                boxShadow: "0 2px 8px rgba(79, 70, 229, 0.4)",
+                border: "1px solid rgba(255,255,255,0.2)"
+              }}
+            >
+              <Navigation size={12} />
+              <span>Open in Google Maps 📍</span>
+            </a>
           </div>
 
           {/* Central Shop Pin Marker */}
@@ -223,7 +229,7 @@ export default function BoisarDeliveryMap({
               whiteSpace: "nowrap",
               border: "1px solid rgba(255,255,255,0.4)"
             }}>
-              📍 CRAZY PRINTING CENTER
+              📍 CRAZY PRINT STORE (19.787653, 72.694511)
             </div>
             <div style={{
               width: 14,
@@ -236,9 +242,9 @@ export default function BoisarDeliveryMap({
           </div>
 
           {/* Bottom Live Coordinates Badge */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", pointerEvents: "auto" }}>
             <div style={{
-              background: "rgba(15, 23, 42, 0.85)",
+              background: "rgba(15, 23, 42, 0.88)",
               backdropFilter: "blur(6px)",
               padding: "4px 10px",
               borderRadius: 6,
@@ -246,7 +252,7 @@ export default function BoisarDeliveryMap({
               color: "#94a3b8",
               fontFamily: "monospace"
             }}>
-              📍 19.8020° N, 72.7548° E • Boisar, Palghar Dist.
+              📍 19.787653° N, 72.694511° E • Boisar 401501
             </div>
 
             <div style={{

@@ -206,15 +206,31 @@ export default function CustomerServicePage() {
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)", marginBottom: 4 }}>
               📍 Dhruvang Crazy Printing Center
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
               Open Monday to Sunday: 8 AM to 10 PM
+            </div>
+            <div style={{ fontSize: 11.5, color: "#0284c7", fontWeight: 700, marginBottom: 8 }}>
+              GPS: 19.787653° N, 72.694511° E (Boisar)
             </div>
           </div>
 
-          <Link href="/track" className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }}>
-            <Search size={16} />
-            <span>Track Order for Pickup</span>
-          </Link>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <a 
+              href="https://www.google.com/maps/dir/?api=1&destination=19.787653,72.694511" 
+              target="_blank" 
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm" 
+              style={{ width: "100%", justifyContent: "center" }}
+            >
+              <MapPin size={14} color="#0284c7" />
+              <span>Open in Google Maps 📍</span>
+            </a>
+
+            <Link href="/track" className="btn btn-secondary btn-sm" style={{ width: "100%", justifyContent: "center" }}>
+              <Search size={14} />
+              <span>Track Order for Pickup</span>
+            </Link>
+          </div>
         </div>
 
         {/* Email Support */}
