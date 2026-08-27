@@ -35,6 +35,12 @@ export default function Home() {
   const [estName, setEstName] = useState("");
   const [estPhone, setEstPhone] = useState("");
 
+  // Quick price estimator calculation
+  const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
+  const baseRate = calcColor === "COLOR" ? 5 : 3;
+  const sideMultiplier = calcSides === "DOUBLE" ? 0.9 : 1;
+  const estPrice = Math.max(5, Math.ceil(baseRate * (multipliers[calcSize] || 1) * sideMultiplier * (calcCopies || 1) * (calcPages || 1)));
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
@@ -52,8 +58,9 @@ export default function Home() {
       return;
     }
     const customer = estName.trim() || "Customer";
-    const totalPgs = calcPages * calcCopies;
+    const totalPgs = (calcPages || 1) * (calcCopies || 1);
     const quotNum = `ADV-CPC-${Date.now().toString().slice(-6)}`;
+    const originUrl = typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center-3ca2.vercel.app";
     const msg = 
       `🧾 *DHRUVANG CRAZY PRINTING CENTER - ADVANCE BILL & ESTIMATE*\n` +
       `--------------------------------\n` +
@@ -65,7 +72,7 @@ export default function Home() {
       `💰 *Estimated Total Amount:* Rs.${estPrice}.00\n` +
       `💳 *UPI Payment ID:* crazyprinting@upi\n` +
       `--------------------------------\n` +
-      `📍 *Upload Your Files & Place Order:* ${typeof window !== "undefined" ? window.location.origin : "https://crazy-printing-center.vercel.app"}/order\n\n` +
+      `📍 *Upload Your Files & Place Order:* ${originUrl}/order\n\n` +
       `Dhruvang Crazy Printing Center • Fast Online Printing Service`;
 
     openWhatsAppChat(estPhone, msg);
@@ -130,12 +137,6 @@ export default function Home() {
       console.warn("OAuth parameter check error:", e);
     }
   }, [router]);
-
-  // Quick price estimator calculation
-  const multipliers = { A4: 1, A5: 0.8, A3: 1.8, Legal: 1.2, Letter: 1, Custom: 1.5 };
-  const baseRate = calcColor === "COLOR" ? 5 : 3;
-  const sideMultiplier = calcSides === "DOUBLE" ? 0.9 : 1;
-  const estPrice = Math.max(5, Math.ceil(baseRate * (multipliers[calcSize] || 1) * sideMultiplier * calcCopies * calcPages));
 
   return (
     <main className="wrap">

@@ -1,20 +1,36 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, RefreshCw, Home, Phone, MessageCircle } from "lucide-react";
+import { AlertTriangle, RefreshCw, Home, Phone, MessageCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 export default function Error({ error, reset }) {
+  const [showDetails, setShowDetails] = useState(false);
+
   useEffect(() => {
     // Log the error safely to console for debugging
     console.error("[CPC Client Error Caught]:", error);
   }, [error]);
+
+  function handleReload() {
+    try {
+      if (typeof reset === "function") {
+        reset();
+      } else if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (e) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/";
+      }
+    }
+  }
 
   return (
     <main className="wrap" style={{ minHeight: "70vh", display: "grid", placeItems: "center", padding: "40px 20px" }}>
       <div 
         className="card" 
         style={{ 
-          maxWidth: 540, 
+          maxWidth: 560, 
           width: "100%", 
           textAlign: "center", 
           padding: "36px 28px",
@@ -42,20 +58,14 @@ export default function Error({ error, reset }) {
         <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, letterSpacing: -0.3 }}>
           Dhruvang Crazy Printing Center
         </h2>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
           A momentary display glitch was caught. Don&apos;t worry — your print orders, uploads, and data remain completely safe.
         </p>
 
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginBottom: 20 }}>
           <button 
             type="button" 
-            onClick={() => {
-              if (typeof reset === "function") {
-                reset();
-              } else if (typeof window !== "undefined") {
-                window.location.reload();
-              }
-            }} 
+            onClick={handleReload} 
             className="btn"
             style={{ fontWeight: 800, padding: "10px 22px" }}
           >
@@ -68,6 +78,51 @@ export default function Error({ error, reset }) {
             <span>Return to Home</span>
           </Link>
         </div>
+
+        {/* Optional Error Diagnostic Details */}
+        {error?.message && (
+          <div style={{ marginBottom: 18, textAlign: "left" }}>
+            <button
+              type="button"
+              onClick={() => setShowDetails(!showDetails)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-light)",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                margin: "0 auto"
+              }}
+            >
+              <span>{showDetails ? "Hide technical diagnostic" : "Show technical diagnostic"}</span>
+              {showDetails ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+
+            {showDetails && (
+              <div 
+                style={{ 
+                  marginTop: 8, 
+                  padding: "10px 14px", 
+                  background: "#0f172a", 
+                  color: "#f8fafc", 
+                  borderRadius: "var(--radius-sm)", 
+                  fontSize: 11, 
+                  fontFamily: "monospace", 
+                  wordBreak: "break-all",
+                  maxHeight: 140,
+                  overflowY: "auto"
+                }}
+              >
+                {error.message || "Unknown client exception"}
+                {error.digest && <div style={{ color: "#94a3b8", marginTop: 4 }}>Digest: {error.digest}</div>}
+              </div>
+            )}
+          </div>
+        )}
 
         <div 
           style={{ 
