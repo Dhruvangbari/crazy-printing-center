@@ -45,7 +45,13 @@ export default function BillsHubPage() {
     if (!isSilent) setRefreshing(true);
     try {
       const s = supabase();
-      const { data: { user } } = await s.auth.getUser();
+      if (!s?.auth) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      const authRes = await s.auth.getUser();
+      const user = authRes?.data?.user || null;
       setUser(user);
 
       if (user) {
@@ -68,23 +74,33 @@ export default function BillsHubPage() {
     loadInvoices();
 
     const s = supabase();
-    const channel = s
-      .channel("bills_hub_live_sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          loadInvoices(true);
-        }
-      )
-      .subscribe();
+    let channel = null;
+
+    try {
+      if (s?.channel) {
+        channel = s
+          .channel("bills_hub_live_sync")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "orders" },
+            () => {
+              loadInvoices(true);
+            }
+          )
+          .subscribe();
+      }
+    } catch (e) {
+      console.warn("Bills hub realtime sync error:", e);
+    }
 
     const interval = setInterval(() => {
       loadInvoices(true);
     }, 6000);
 
     return () => {
-      s.removeChannel(channel);
+      try {
+        if (s?.removeChannel && channel) s.removeChannel(channel);
+      } catch (e) {}
       clearInterval(interval);
     };
   }, []);

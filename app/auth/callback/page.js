@@ -23,12 +23,18 @@ export default function AuthCallback() {
           }
         }
 
-        const { data: { user }, error } = await s.auth.getUser();
-
-        if (error) {
-          setErrorMsg(error.message);
+        if (!s?.auth) {
+          setErrorMsg("Authentication service unavailable. Please try logging in again.");
           return;
         }
+
+        const authRes = await s.auth.getUser();
+        if (authRes?.error) {
+          setErrorMsg(authRes.error.message);
+          return;
+        }
+
+        const user = authRes?.data?.user;
 
         if (user) {
           // Sync profile
@@ -38,29 +44,37 @@ export default function AuthCallback() {
             user.email?.split("@")[0] || 
             "Customer";
 
-          await s.from("profiles").upsert(
-            {
-              id: user.id,
-              name: name,
-              phone: user.user_metadata?.phone || null,
-            },
-            { onConflict: "id" }
-          );
+          try {
+            await s.from("profiles").upsert(
+              {
+                id: user.id,
+                name: name,
+                phone: user.user_metadata?.phone || null,
+              },
+              { onConflict: "id" }
+            );
+          } catch (e) {}
 
           // Check role or direct Dhruvang email
           const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
 
-          const { data: profile } = await s
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single();
+          let profile = null;
+          try {
+            const { data } = await s
+              .from("profiles")
+              .select("role")
+              .eq("id", user.id)
+              .single();
+            profile = data;
+          } catch (e) {}
 
           if (isDhruvang && profile?.role !== "ADMIN") {
-            await s.from("profiles").upsert(
-              { id: user.id, role: "ADMIN" },
-              { onConflict: "id" }
-            );
+            try {
+              await s.from("profiles").upsert(
+                { id: user.id, role: "ADMIN" },
+                { onConflict: "id" }
+              );
+            } catch (e) {}
           }
 
           const returnUrl = typeof window !== "undefined" ? localStorage.getItem("cpc_auth_return") : null;

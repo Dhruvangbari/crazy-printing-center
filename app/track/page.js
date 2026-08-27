@@ -51,23 +51,33 @@ export default function Track() {
   useEffect(() => {
     if (order?.id && order?.order_number) {
       const s = supabase();
-      const channel = s
-        .channel(`track_live_order_${order.id}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
-          () => {
-            reloadTrackedOrder(order.order_number, true);
-          }
-        )
-        .subscribe();
+      let channel = null;
+
+      try {
+        if (s?.channel) {
+          channel = s
+            .channel(`track_live_order_${order.id}`)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "orders", filter: `id=eq.${order.id}` },
+              () => {
+                reloadTrackedOrder(order.order_number, true);
+              }
+            )
+            .subscribe();
+        }
+      } catch (e) {
+        console.warn("Track live channel error:", e);
+      }
 
       const interval = setInterval(() => {
         reloadTrackedOrder(order.order_number, true);
       }, 5000);
 
       return () => {
-        s.removeChannel(channel);
+        try {
+          if (s?.removeChannel && channel) s.removeChannel(channel);
+        } catch (e) {}
         clearInterval(interval);
       };
     }

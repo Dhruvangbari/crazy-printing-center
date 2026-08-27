@@ -73,49 +73,61 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (code) {
-      const s = supabase();
-      s.auth.getUser().then(async ({ data: { user } }) => {
-        if (user) {
-          const name =
-            user.user_metadata?.full_name ||
-            user.user_metadata?.name ||
-            user.email?.split("@")[0] ||
-            "Customer";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      if (code) {
+        const s = supabase();
+        if (!s?.auth) return;
+        s.auth.getUser().then(async (authRes) => {
+          const user = authRes?.data?.user;
+          if (user) {
+            const name =
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              user.email?.split("@")[0] ||
+              "Customer";
 
-          await s.from("profiles").upsert(
-            {
-              id: user.id,
-              name: name,
-              phone: user.user_metadata?.phone || null,
-            },
-            { onConflict: "id" }
-          );
+            try {
+              await s.from("profiles").upsert(
+                {
+                  id: user.id,
+                  name: name,
+                  phone: user.user_metadata?.phone || null,
+                },
+                { onConflict: "id" }
+              );
 
-          const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
+              const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
 
-          const { data: prof } = await s
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single();
+              const { data: prof } = await s
+                .from("profiles")
+                .select("role")
+                .eq("id", user.id)
+                .single();
 
-          if (isDhruvang && prof?.role !== "ADMIN") {
-            await s.from("profiles").upsert(
-              { id: user.id, role: "ADMIN" },
-              { onConflict: "id" }
-            );
+              if (isDhruvang && prof?.role !== "ADMIN") {
+                await s.from("profiles").upsert(
+                  { id: user.id, role: "ADMIN" },
+                  { onConflict: "id" }
+                );
+              }
+
+              if (isDhruvang || prof?.role === "ADMIN") {
+                router.push("/admin");
+              } else {
+                router.push("/orders");
+              }
+            } catch (dbErr) {
+              console.warn("Profile sync error on OAuth callback:", dbErr);
+            }
           }
-
-          if (isDhruvang || prof?.role === "ADMIN") {
-            router.push("/admin");
-          } else {
-            router.push("/orders");
-          }
-        }
-      });
+        }).catch((err) => {
+          console.warn("OAuth getUser error:", err);
+        });
+      }
+    } catch (e) {
+      console.warn("OAuth parameter check error:", e);
     }
   }, [router]);
 

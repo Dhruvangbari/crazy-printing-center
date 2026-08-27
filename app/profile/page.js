@@ -35,7 +35,12 @@ export default function ProfilePage() {
 
     async function loadProfile() {
       try {
-        const { data: { user } } = await s.auth.getUser();
+        if (!s?.auth) {
+          setLoading(false);
+          return;
+        }
+        const authRes = await s.auth.getUser();
+        const user = authRes?.data?.user;
         if (!user) {
           router.push("/login");
           return;

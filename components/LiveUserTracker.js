@@ -29,84 +29,102 @@ export default function LiveUserTracker() {
       return { name, phone, email };
     }
 
-    // 1. Join Realtime Presence Channel for Live Active Users
-    const presenceChannel = s.channel("cpc_live_presence", {
-      config: {
-        presence: {
-          key: sessionId,
+    try {
+      // 1. Join Realtime Presence Channel for Live Active Users
+      const presenceChannel = s?.channel ? s.channel("cpc_live_presence", {
+        config: {
+          presence: {
+            key: sessionId,
+          },
         },
-      },
-    });
+      }) : null;
 
-    presenceChannelRef.current = presenceChannel;
+      presenceChannelRef.current = presenceChannel;
 
-    // 2. Dedicated Live Action Broadcast Channel
-    const actionsChannel = s.channel("cpc_live_actions_channel");
-    actionsChannelRef.current = actionsChannel;
+      // 2. Dedicated Live Action Broadcast Channel
+      const actionsChannel = s?.channel ? s.channel("cpc_live_actions_channel") : null;
+      actionsChannelRef.current = actionsChannel;
 
-    actionsChannel.subscribe();
+      if (actionsChannel?.subscribe) {
+        actionsChannel.subscribe();
+      }
 
-    presenceChannel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        const u = getUserDetails();
-        await presenceChannel.track({
-          sessionId,
-          name: u.name,
-          phone: u.phone,
-          email: u.email,
-          currentPath: pathname || window.location.pathname,
-          deviceInfo,
-          locality: "Boisar, Maharashtra",
-          onlineAt: new Date().toISOString(),
-          lastActiveAt: new Date().toISOString(),
-          status: pathname === "/order" ? "Placing Order" : pathname.startsWith("/orders/") ? "Viewing Order Tracker" : "Browsing",
+      if (presenceChannel?.subscribe) {
+        presenceChannel.subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            try {
+              const u = getUserDetails();
+              await presenceChannel.track({
+                sessionId,
+                name: u.name,
+                phone: u.phone,
+                email: u.email,
+                currentPath: pathname || window.location.pathname,
+                deviceInfo,
+                locality: "Boisar, Maharashtra",
+                onlineAt: new Date().toISOString(),
+                lastActiveAt: new Date().toISOString(),
+                status: pathname === "/order" ? "Placing Order" : pathname.startsWith("/orders/") ? "Viewing Order Tracker" : "Browsing",
+              });
+            } catch (err) {}
+          }
         });
       }
-    });
+    } catch (e) {
+      console.warn("Presence channel setup error:", e);
+    }
 
     // 3. Listen to local user action events and broadcast across network
     const handleLocalAction = (e) => {
-      const detail = e.detail;
-      if (actionsChannel && actionsChannel.state === "joined") {
-        actionsChannel.send({
-          type: "broadcast",
-          event: "user_action",
-          payload: detail,
-        });
-      }
+      try {
+        const detail = e.detail;
+        if (actionsChannelRef.current && actionsChannelRef.current.state === "joined") {
+          actionsChannelRef.current.send({
+            type: "broadcast",
+            event: "user_action",
+            payload: detail,
+          });
+        }
+      } catch (err) {}
     };
 
     window.addEventListener("cpc:user_action", handleLocalAction);
 
     // Heartbeat to update presence every 20 seconds
     const interval = setInterval(() => {
-      if (presenceChannel && presenceChannel.state === "joined") {
-        const u = getUserDetails();
-        presenceChannel.track({
-          sessionId,
-          name: u.name,
-          phone: u.phone,
-          email: u.email,
-          currentPath: window.location.pathname,
-          deviceInfo,
-          locality: "Boisar, Maharashtra",
-          onlineAt: new Date().toISOString(),
-          lastActiveAt: new Date().toISOString(),
-          status: window.location.pathname === "/order" ? "Placing Order" : "Active",
-        });
-      }
+      try {
+        if (presenceChannelRef.current && presenceChannelRef.current.state === "joined") {
+          const u = getUserDetails();
+          presenceChannelRef.current.track({
+            sessionId,
+            name: u.name,
+            phone: u.phone,
+            email: u.email,
+            currentPath: window.location.pathname,
+            deviceInfo,
+            locality: "Boisar, Maharashtra",
+            onlineAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            status: window.location.pathname === "/order" ? "Placing Order" : "Active",
+          });
+        }
+      } catch (err) {}
     }, 20000);
 
     return () => {
       window.removeEventListener("cpc:user_action", handleLocalAction);
       clearInterval(interval);
-      if (presenceChannelRef.current) {
-        presenceChannelRef.current.untrack();
-        s.removeChannel(presenceChannelRef.current);
-      }
-      if (actionsChannelRef.current) {
-        s.removeChannel(actionsChannelRef.current);
-      }
+      try {
+        if (presenceChannelRef.current) {
+          presenceChannelRef.current?.untrack?.();
+          if (s?.removeChannel) s.removeChannel(presenceChannelRef.current);
+        }
+      } catch (e) {}
+      try {
+        if (actionsChannelRef.current && s?.removeChannel) {
+          s.removeChannel(actionsChannelRef.current);
+        }
+      } catch (e) {}
     };
   }, []);
 

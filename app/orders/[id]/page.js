@@ -150,28 +150,35 @@ export default function Detail() {
   }
 
   useEffect(() => {
-    if (p.id) {
+    if (p?.id) {
       loadOrder();
 
       const s = supabase();
-      // 1. Supabase Postgres Realtime Subscription for this order
-      const channel = s
-        .channel(`order_live_sync_${p.id}`)
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${p.id}` },
-          () => {
-            loadOrder(true);
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "status_history", filter: `order_id=eq.${p.id}` },
-          () => {
-            loadOrder(true);
-          }
-        )
-        .subscribe();
+      let channel = null;
+
+      try {
+        if (s?.channel) {
+          channel = s
+            .channel(`order_live_sync_${p.id}`)
+            .on(
+              "postgres_changes",
+              { event: "UPDATE", schema: "public", table: "orders", filter: `id=eq.${p.id}` },
+              () => {
+                loadOrder(true);
+              }
+            )
+            .on(
+              "postgres_changes",
+              { event: "INSERT", schema: "public", table: "status_history", filter: `order_id=eq.${p.id}` },
+              () => {
+                loadOrder(true);
+              }
+            )
+            .subscribe();
+        }
+      } catch (e) {
+        console.warn("Order live sync error:", e);
+      }
 
       // 2. Auto-refresh polling every 5 seconds
       const interval = setInterval(() => {
@@ -179,11 +186,13 @@ export default function Detail() {
       }, 5000);
 
       return () => {
-        s.removeChannel(channel);
+        try {
+          if (s?.removeChannel && channel) s.removeChannel(channel);
+        } catch (e) {}
         clearInterval(interval);
       };
     }
-  }, [p.id]);
+  }, [p?.id]);
 
   async function handleSendInvoiceEmail() {
     if (!o) return;

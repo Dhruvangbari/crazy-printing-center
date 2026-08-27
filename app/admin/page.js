@@ -136,75 +136,85 @@ export default function AdminDashboard() {
     checkAdminAndFetch();
 
     const s = supabase();
+    let orderChannel = null;
+    let presenceChannel = null;
+    let actionsBroadcastChannel = null;
 
-    // 1. Supabase Realtime subscription for Orders & Status History
-    const orderChannel = s
-      .channel("admin_orders_realtime_channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          fetchOrders(true);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "status_history" },
-        () => {
-          fetchOrders(true);
-        }
-      )
-      .subscribe();
+    try {
+      if (s?.channel) {
+        // 1. Supabase Realtime subscription for Orders & Status History
+        orderChannel = s
+          .channel("admin_orders_realtime_channel")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "orders" },
+            () => {
+              fetchOrders(true);
+            }
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "status_history" },
+            () => {
+              fetchOrders(true);
+            }
+          )
+          .subscribe();
 
-    // 2. Real-Time Presence for Live Connected Users
-    const presenceChannel = s.channel("cpc_live_presence");
-    presenceChannel
-      .on("presence", { event: "sync" }, () => {
-        const state = presenceChannel.presenceState();
-        const usersList = [];
-        Object.keys(state).forEach((key) => {
-          state[key].forEach((u) => {
-            usersList.push({
-              ...u,
-              presenceKey: key,
-            });
-          });
-        });
-        setLiveUsers(usersList);
-      })
-      .on("presence", { event: "join" }, ({ newPresences }) => {
-        if (newPresences && newPresences.length > 0) {
-          const joinedUser = newPresences[0];
-          const joinAction = {
-            sessionId: joinedUser.sessionId,
-            actionType: "PAGE_VIEW",
-            actionTitle: `User joined site at ${joinedUser.currentPath || "/"}`,
-            userName: joinedUser.name || "Guest Visitor",
-            userPhone: joinedUser.phone || "",
-            pageUrl: joinedUser.currentPath || "/",
-            deviceInfo: joinedUser.deviceInfo || "Device",
-            timestamp: new Date().toISOString(),
-          };
-          setActionLogs((prev) => [joinAction, ...prev.slice(0, 199)]);
-        }
-      })
-      .subscribe();
+        // 2. Real-Time Presence for Live Connected Users
+        presenceChannel = s.channel("cpc_live_presence");
+        presenceChannel
+          .on("presence", { event: "sync" }, () => {
+            try {
+              const state = presenceChannel.presenceState?.() || {};
+              const usersList = [];
+              Object.keys(state).forEach((key) => {
+                (state[key] || []).forEach((u) => {
+                  usersList.push({
+                    ...u,
+                    presenceKey: key,
+                  });
+                });
+              });
+              setLiveUsers(usersList);
+            } catch (err) {}
+          })
+          .on("presence", { event: "join" }, ({ newPresences }) => {
+            if (newPresences && newPresences.length > 0) {
+              const joinedUser = newPresences[0];
+              const joinAction = {
+                sessionId: joinedUser.sessionId,
+                actionType: "PAGE_VIEW",
+                actionTitle: `User joined site at ${joinedUser.currentPath || "/"}`,
+                userName: joinedUser.name || "Guest Visitor",
+                userPhone: joinedUser.phone || "",
+                pageUrl: joinedUser.currentPath || "/",
+                deviceInfo: joinedUser.deviceInfo || "Device",
+                timestamp: new Date().toISOString(),
+              };
+              setActionLogs((prev) => [joinAction, ...prev.slice(0, 199)]);
+            }
+          })
+          .subscribe();
 
-    // 3. Real-Time Broadcast for Live User Action Stream
-    const actionsBroadcastChannel = s.channel("cpc_live_actions_channel");
-    actionsBroadcastChannel
-      .on("broadcast", { event: "user_action" }, ({ payload }) => {
-        if (payload) {
-          setActionLogs((prev) => {
-            // Avoid duplicate by sessionId and timestamp if needed
-            return [payload, ...prev.slice(0, 199)];
-          });
-          setNewActionFlash(true);
-          playNotificationChime();
-          setTimeout(() => setNewActionFlash(false), 2000);
-        }
-      })
-      .subscribe();
+        // 3. Real-Time Broadcast for Live User Action Stream
+        actionsBroadcastChannel = s.channel("cpc_live_actions_channel");
+        actionsBroadcastChannel
+          .on("broadcast", { event: "user_action" }, ({ payload }) => {
+            if (payload) {
+              setActionLogs((prev) => {
+                return [payload, ...prev.slice(0, 199)];
+              });
+              setNewActionFlash(true);
+              playNotificationChime();
+              setTimeout(() => setNewActionFlash(false), 2000);
+            }
+          })
+          .subscribe();
+      }
+    } catch (e) {
+      console.warn("Admin realtime sync error:", e);
+    }
 
     // 4. Initial fetch of persistent activity logs from database
     fetchInitialActivityLogs();
@@ -215,9 +225,13 @@ export default function AdminDashboard() {
     }, 5000);
 
     return () => {
-      s.removeChannel(orderChannel);
-      s.removeChannel(presenceChannel);
-      s.removeChannel(actionsBroadcastChannel);
+      try {
+        if (s?.removeChannel) {
+          if (orderChannel) s.removeChannel(orderChannel);
+          if (presenceChannel) s.removeChannel(presenceChannel);
+          if (actionsBroadcastChannel) s.removeChannel(actionsBroadcastChannel);
+        }
+      } catch (e) {}
       clearInterval(interval);
     };
   }, [soundEnabled]);
@@ -225,6 +239,7 @@ export default function AdminDashboard() {
   async function fetchInitialActivityLogs() {
     try {
       const s = supabase();
+      if (!s?.from) return;
       const { data } = await s
         .from("activity_logs")
         .select("*")
@@ -267,7 +282,13 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const s = supabase();
-      const { data: { user } } = await s.auth.getUser();
+      if (!s?.auth) {
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+      const authRes = await s.auth.getUser();
+      const user = authRes?.data?.user;
 
       if (!user) {
         router.push("/login");
@@ -276,11 +297,15 @@ export default function AdminDashboard() {
 
       const isDhruvang = Boolean(user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com");
 
-      const { data: profile } = await s
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+      let profile = null;
+      try {
+        const { data } = await s
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        profile = data;
+      } catch (err) {}
 
       const hasAdminRole = profile?.role === "ADMIN" || isDhruvang;
 
@@ -292,10 +317,12 @@ export default function AdminDashboard() {
       }
 
       if (isDhruvang && profile?.role !== "ADMIN") {
-        await s.from("profiles").upsert(
-          { id: user.id, role: "ADMIN" },
-          { onConflict: "id" }
-        );
+        try {
+          await s.from("profiles").upsert(
+            { id: user.id, role: "ADMIN" },
+            { onConflict: "id" }
+          );
+        } catch (err) {}
       }
 
       setIsAdmin(true);

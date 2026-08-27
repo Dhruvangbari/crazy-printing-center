@@ -67,38 +67,50 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const s = supabase();
-    const channel = s
-      .channel("navbar_notifications_channel")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
-        const order = payload.new;
-        if (!order) return;
-        const newNotif = {
-          id: order.id + "-" + Date.now(),
-          orderId: order.id,
-          orderNumber: order.order_number,
-          title: `Order #${order.order_number}`,
-          message: `Status updated to ${order.status?.replaceAll("_", " ")}`,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          read: false
-        };
-        setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
-        setUnreadCount((c) => c + 1);
-      })
-      .subscribe();
+    try {
+      const s = supabase();
+      if (!s || !s.channel) return;
+      const channel = s
+        .channel("navbar_notifications_channel")
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (payload) => {
+          const order = payload?.new;
+          if (!order) return;
+          const newNotif = {
+            id: order.id + "-" + Date.now(),
+            orderId: order.id,
+            orderNumber: order.order_number,
+            title: `Order #${order.order_number}`,
+            message: `Status updated to ${order.status?.replaceAll("_", " ")}`,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            read: false
+          };
+          setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
+          setUnreadCount((c) => c + 1);
+        })
+        .subscribe();
 
-    return () => {
-      s.removeChannel(channel);
-    };
+      return () => {
+        try {
+          if (s?.removeChannel && channel) s.removeChannel(channel);
+        } catch (e) {}
+      };
+    } catch (e) {
+      console.warn("Navbar realtime notifications error:", e);
+    }
   }, []);
 
   useEffect(() => {
     setMounted(true);
-    const s = supabase();
+    let isSubscribed = true;
+    let authSubscription = null;
 
     async function loadUser() {
       try {
-        const { data: { user } } = await s.auth.getUser();
+        const s = supabase();
+        if (!s?.auth) return;
+        const res = await s.auth.getUser();
+        const user = res?.data?.user || null;
+        if (!isSubscribed) return;
         setUser(user);
         if (user) {
           const isDhruvang = user.email && user.email.toLowerCase() === "dhruvangbari2006@gmail.com";
@@ -108,6 +120,8 @@ export default function Navbar() {
             .eq("id", user.id)
             .single();
 
+          if (!isSubscribed) return;
+
           if (isDhruvang && data?.role !== "ADMIN") {
             await s.from("profiles").upsert(
               { id: user.id, role: "ADMIN" },
@@ -115,7 +129,7 @@ export default function Navbar() {
             );
             setProfile({ ...data, role: "ADMIN" });
           } else {
-            setProfile(data);
+            setProfile(data || null);
           }
         } else {
           setProfile(null);
@@ -127,21 +141,40 @@ export default function Navbar() {
 
     loadUser();
 
-    const { data: { subscription } } = s.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        const { data } = await s
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .single();
-        setProfile(data);
-      } else {
-        setProfile(null);
+    try {
+      const s = supabase();
+      if (s?.auth?.onAuthStateChange) {
+        const authRes = s.auth.onAuthStateChange(async (event, session) => {
+          if (!isSubscribed) return;
+          const currentUser = session?.user || null;
+          setUser(currentUser);
+          if (currentUser) {
+            try {
+              const { data } = await s
+                .from("profiles")
+                .select("*")
+                .eq("id", currentUser.id)
+                .single();
+              if (isSubscribed) setProfile(data || null);
+            } catch (e) {
+              if (isSubscribed) setProfile(null);
+            }
+          } else {
+            if (isSubscribed) setProfile(null);
+          }
+        });
+        authSubscription = authRes?.data?.subscription;
       }
-    });
+    } catch (e) {
+      console.warn("Navbar auth subscription error:", e);
+    }
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      isSubscribed = false;
+      try {
+        authSubscription?.unsubscribe?.();
+      } catch (e) {}
+    };
   }, []);
 
   // Close mobile menu and flyouts on page navigation

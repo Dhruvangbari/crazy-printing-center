@@ -31,7 +31,13 @@ export default function Orders() {
     if (!isSilent) setRefreshing(true);
     try {
       const s = supabase();
-      const { data: { user } } = await s.auth.getUser();
+      if (!s?.auth) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      const authRes = await s.auth.getUser();
+      const user = authRes?.data?.user;
 
       if (!user) {
         router.push("/login");
@@ -62,17 +68,24 @@ export default function Orders() {
     loadOrders();
 
     const s = supabase();
-    // 1. Supabase Postgres Realtime Subscription
-    const channel = s
-      .channel("customer_orders_live_sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          loadOrders(true);
-        }
-      )
-      .subscribe();
+    let channel = null;
+
+    try {
+      if (s?.channel) {
+        channel = s
+          .channel("customer_orders_live_sync")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "orders" },
+            () => {
+              loadOrders(true);
+            }
+          )
+          .subscribe();
+      }
+    } catch (e) {
+      console.warn("Orders realtime sync error:", e);
+    }
 
     // 2. Auto-refresh polling every 6 seconds as a backup
     const interval = setInterval(() => {
@@ -82,7 +95,9 @@ export default function Orders() {
     }, 6000);
 
     return () => {
-      s.removeChannel(channel);
+      try {
+        if (s?.removeChannel && channel) s.removeChannel(channel);
+      } catch (e) {}
       clearInterval(interval);
     };
   }, [loadOrders, autoRefresh]);

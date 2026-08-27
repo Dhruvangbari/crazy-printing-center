@@ -219,21 +219,36 @@ export default function Order() {
       }
     }
 
-    s.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        syncProfile(session.user);
-      }
-    });
+    if (s?.auth?.getSession) {
+      s.auth.getSession().then((sessionRes) => {
+        const session = sessionRes?.data?.session;
+        if (session?.user) {
+          syncProfile(session.user);
+        }
+      }).catch((e) => console.warn(e));
+    }
 
-    const { data: { subscription } } = s.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        syncProfile(session.user);
-      } else {
-        setUser(null);
+    let authSubscription = null;
+    if (s?.auth?.onAuthStateChange) {
+      try {
+        const authRes = s.auth.onAuthStateChange((_event, session) => {
+          if (session?.user) {
+            syncProfile(session.user);
+          } else {
+            setUser(null);
+          }
+        });
+        authSubscription = authRes?.data?.subscription;
+      } catch (e) {
+        console.warn(e);
       }
-    });
+    }
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      try {
+        authSubscription?.unsubscribe?.();
+      } catch (e) {}
+    };
   }, []);
 
   // Save customer details to localStorage (Durability)

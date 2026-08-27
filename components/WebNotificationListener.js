@@ -36,99 +36,110 @@ export default function WebNotificationListener() {
   }, []);
 
   useEffect(() => {
-    const s = supabase();
+    try {
+      const s = supabase();
+      if (!s || !s.channel) return;
 
-    // 1. Listen for Order Status updates
-    const channel = s
-      .channel("web_notifications_channel")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
-        (payload) => {
-          const updated = payload.new;
-          if (!updated) return;
+      // 1. Listen for Order Status updates
+      const channel = s
+        .channel("web_notifications_channel")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "orders" },
+          (payload) => {
+            const updated = payload?.new;
+            if (!updated) return;
 
-          let title = "Print Job Update";
-          let message = `Order #${updated.order_number} status is now ${updated.status?.replaceAll("_", " ")}`;
-          let type = "info";
+            let title = "Print Job Update";
+            let message = `Order #${updated.order_number} status is now ${updated.status?.replaceAll("_", " ")}`;
+            let type = "info";
 
-          if (updated.status === "PAYMENT_VERIFIED") {
-            title = "Payment Verified ✅";
-            message = `Order #${updated.order_number} (₹${updated.total}) has been verified! Sent to high-speed printer.`;
-            type = "success";
-          } else if (updated.status === "PRINTING") {
-            title = "Printing in Progress 🖨️";
-            message = `Order #${updated.order_number} is currently printing on the machine.`;
-            type = "alert";
-          } else if (updated.status === "READY") {
-            title = "Order Ready for Collection 🎉";
-            message = `Order #${updated.order_number} is packed & ready at our store counter!`;
-            type = "success";
-          } else if (updated.status === "OUT_FOR_DELIVERY") {
-            title = "Out for Delivery 🚚";
-            message = `Order #${updated.order_number} has been handed over to the courier partner.`;
-            type = "alert";
-          } else if (updated.status === "DELIVERED") {
-            title = "Order Delivered 📦";
-            message = `Order #${updated.order_number} has been delivered successfully!`;
-            type = "success";
+            if (updated.status === "PAYMENT_VERIFIED") {
+              title = "Payment Verified ✅";
+              message = `Order #${updated.order_number} (₹${updated.total}) has been verified! Sent to high-speed printer.`;
+              type = "success";
+            } else if (updated.status === "PRINTING") {
+              title = "Printing in Progress 🖨️";
+              message = `Order #${updated.order_number} is currently printing on the machine.`;
+              type = "alert";
+            } else if (updated.status === "READY") {
+              title = "Order Ready for Collection 🎉";
+              message = `Order #${updated.order_number} is packed & ready at our store counter!`;
+              type = "success";
+            } else if (updated.status === "OUT_FOR_DELIVERY") {
+              title = "Out for Delivery 🚚";
+              message = `Order #${updated.order_number} has been handed over to the courier partner.`;
+              type = "alert";
+            } else if (updated.status === "DELIVERED") {
+              title = "Order Delivered 📦";
+              message = `Order #${updated.order_number} has been delivered successfully!`;
+              type = "success";
+            }
+
+            // Trigger sound and native OS push
+            try {
+              playChime(type);
+              showWebPushNotification({
+                title: `Dhruvang Crazy Printing: ${title}`,
+                body: message,
+                url: `/orders/${updated.id}`,
+              });
+            } catch (err) {}
+
+            // Show floating in-app toast
+            setActiveToast({
+              id: updated.id,
+              orderNumber: updated.order_number,
+              title,
+              message,
+              status: updated.status,
+              total: updated.total,
+            });
+
+            // Auto-dismiss in-app toast after 8 seconds
+            setTimeout(() => {
+              setActiveToast((prev) => (prev?.orderNumber === updated.order_number ? null : prev));
+            }, 8000);
           }
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "orders" },
+          (payload) => {
+            const newOrder = payload?.new;
+            if (!newOrder) return;
 
-          // Trigger sound and native OS push
-          playChime(type);
-          showWebPushNotification({
-            title: `Dhruvang Crazy Printing: ${title}`,
-            body: message,
-            url: `/orders/${updated.id}`,
-          });
+            try {
+              playChime("alert");
+              showWebPushNotification({
+                title: "Dhruvang Crazy Printing: New Order Placed 📄",
+                body: `Order #${newOrder.order_number} (₹${newOrder.total}) received.`,
+                url: `/orders/${newOrder.id}`,
+              });
+            } catch (err) {}
 
-          // Show floating in-app toast
-          setActiveToast({
-            id: updated.id,
-            orderNumber: updated.order_number,
-            title,
-            message,
-            status: updated.status,
-            total: updated.total,
-          });
+            setActiveToast({
+              id: newOrder.id,
+              orderNumber: newOrder.order_number,
+              title: "New Order Placed 📄",
+              message: `Order #${newOrder.order_number} (₹${newOrder.total}) placed successfully.`,
+              status: newOrder.status,
+              total: newOrder.total,
+            });
 
-          // Auto-dismiss in-app toast after 8 seconds
-          setTimeout(() => {
-            setActiveToast((prev) => (prev?.orderNumber === updated.order_number ? null : prev));
-          }, 8000);
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        (payload) => {
-          const newOrder = payload.new;
-          if (!newOrder) return;
+            setTimeout(() => setActiveToast(null), 8000);
+          }
+        )
+        .subscribe();
 
-          playChime("alert");
-          showWebPushNotification({
-            title: "Dhruvang Crazy Printing: New Order Placed 📄",
-            body: `Order #${newOrder.order_number} (₹${newOrder.total}) received.`,
-            url: `/orders/${newOrder.id}`,
-          });
-
-          setActiveToast({
-            id: newOrder.id,
-            orderNumber: newOrder.order_number,
-            title: "New Order Placed 📄",
-            message: `Order #${newOrder.order_number} (₹${newOrder.total}) placed successfully.`,
-            status: newOrder.status,
-            total: newOrder.total,
-          });
-
-          setTimeout(() => setActiveToast(null), 8000);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      s.removeChannel(channel);
-    };
+      return () => {
+        try {
+          if (s?.removeChannel && channel) s.removeChannel(channel);
+        } catch (e) {}
+      };
+    } catch (e) {
+      console.warn("WebNotificationListener subscription error:", e);
+    }
   }, []);
 
   async function handleEnablePush() {
