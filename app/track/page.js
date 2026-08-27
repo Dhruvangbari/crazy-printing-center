@@ -260,6 +260,9 @@ export default function Track() {
                     <Receipt size={13} />
                     <span>Verified Bill & QR</span>
                   </Link>
+                  <Link href={`/orders/${order.id}`} className="btn btn-secondary btn-sm" style={{ borderColor: "#fde047", background: "#fefce8", color: "#854d0e", fontWeight: 700 }}>
+                    <span>Report Defect / Refund</span>
+                  </Link>
                   <Link href={`/orders/${order.id}`} className="btn btn-secondary btn-sm">
                     <span>Manage Order</span>
                     <ArrowRight size={13} />

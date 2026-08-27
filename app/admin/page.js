@@ -22,35 +22,26 @@ import {
   Check, 
   X, 
   ExternalLink,
-  MessageSquare,
-  AlertTriangle,
   MessageCircle,
   Receipt,
   User,
   Phone,
   MapPin,
-  BookOpen,
+  Sparkles,
   Zap,
-  Home,
   Copy,
-  ShieldAlert,
-  Radio,
   Activity,
   Users,
-  Globe,
   Laptop,
-  Smartphone,
-  Sparkles,
-  History,
   Compass,
-  ArrowRight,
-  Send,
+  AlertTriangle,
   Volume2,
-  VolumeX
+  VolumeX,
+  AlertCircle
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
 import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
-import { calculateOrderPriority, generateAiAdminPaymentAlert } from "../../lib/aiOrderAgent";
+import { calculateOrderPriority } from "../../lib/aiOrderAgent";
 
 const STATUS_LIST = [
   { key: "ALL", label: "All Orders" },
@@ -91,7 +82,6 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("AI_PRIORITY");
   const [updating, setUpdating] = useState(false);
-  const [aiProcessingId, setAiProcessingId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,11 +97,16 @@ export default function AdminDashboard() {
   const [actionSearch, setActionSearch] = useState("");
   const [selectedUserInspect, setSelectedUserInspect] = useState(null);
   const [newActionFlash, setNewActionFlash] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const audioContextRef = useRef(null);
 
-  // Play subtle high-tech notification chime on new live action if sound enabled
-  function playNotificationChime() {
+  // Selected order files & payment screenshot URL states
+  const [selectedOrderProofUrl, setSelectedOrderProofUrl] = useState(null);
+  const [selectedOrderDocUrls, setSelectedOrderDocUrls] = useState({});
+  const [copiedUtr, setCopiedUtr] = useState(false);
+
+  // Play audio chime
+  function playNotificationChime(type = "info") {
     if (!soundEnabled || typeof window === "undefined") return;
     try {
       if (!audioContextRef.current) {
@@ -120,15 +115,29 @@ export default function AdminDashboard() {
       const ctx = audioContextRef.current;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
-      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
+
+      if (type === "success") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } else {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      }
     } catch (e) {}
   }
 
@@ -142,7 +151,7 @@ export default function AdminDashboard() {
 
     try {
       if (s?.channel) {
-        // 1. Supabase Realtime subscription for Orders & Status History
+        // 1. Orders & Status History Realtime Listener
         orderChannel = s
           .channel("admin_orders_realtime_channel")
           .on(
@@ -197,14 +206,12 @@ export default function AdminDashboard() {
           })
           .subscribe();
 
-        // 3. Real-Time Broadcast for Live User Action Stream
+        // 3. Real-Time Action Stream
         actionsBroadcastChannel = s.channel("cpc_live_actions_channel");
         actionsBroadcastChannel
           .on("broadcast", { event: "user_action" }, ({ payload }) => {
             if (payload) {
-              setActionLogs((prev) => {
-                return [payload, ...prev.slice(0, 199)];
-              });
+              setActionLogs((prev) => [payload, ...prev.slice(0, 199)]);
               setNewActionFlash(true);
               playNotificationChime();
               setTimeout(() => setNewActionFlash(false), 2000);
@@ -216,7 +223,7 @@ export default function AdminDashboard() {
       console.warn("Admin realtime sync error:", e);
     }
 
-    // 4. Initial fetch of persistent activity logs from database
+    // 4. Initial fetch of persistent activity logs
     fetchInitialActivityLogs();
 
     // 5. Auto-refresh polling backup every 5 seconds
@@ -235,6 +242,63 @@ export default function AdminDashboard() {
       clearInterval(interval);
     };
   }, [soundEnabled]);
+
+  // Load Document Previews & Payment Screenshot when an order is opened
+  useEffect(() => {
+    if (!selectedOrder) {
+      setSelectedOrderProofUrl(null);
+      setSelectedOrderDocUrls({});
+      return;
+    }
+
+    const s = supabase();
+
+    // 1. Fetch Payment Proof Image URL
+    if (selectedOrder.payment_proof_path) {
+      s.storage
+        .from("payment-proofs")
+        .createSignedUrl(selectedOrder.payment_proof_path, 3600)
+        .then(({ data, error }) => {
+          if (!error && data?.signedUrl) {
+            setSelectedOrderProofUrl(data.signedUrl);
+          } else {
+            const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(selectedOrder.payment_proof_path);
+            setSelectedOrderProofUrl(pub?.publicUrl || null);
+          }
+        })
+        .catch(() => {
+          const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(selectedOrder.payment_proof_path);
+          setSelectedOrderProofUrl(pub?.publicUrl || null);
+        });
+    } else {
+      setSelectedOrderProofUrl(null);
+    }
+
+    // 2. Fetch Document Signed URLs for instant viewing
+    if (selectedOrder.order_files && selectedOrder.order_files.length > 0) {
+      const urls = {};
+      Promise.all(
+        selectedOrder.order_files.map(async (file) => {
+          try {
+            const { data, error } = await s.storage.from("documents").createSignedUrl(file.storage_path, 3600);
+            if (!error && data?.signedUrl) {
+              urls[file.id] = data.signedUrl;
+            } else {
+              const { data: pub } = s.storage.from("documents").getPublicUrl(file.storage_path);
+              urls[file.id] = pub?.publicUrl || null;
+            }
+          } catch (e) {
+            const { data: pub } = s.storage.from("documents").getPublicUrl(file.storage_path);
+            urls[file.id] = pub?.publicUrl || null;
+          }
+        })
+      ).then(() => {
+        setSelectedOrderDocUrls(urls);
+      });
+    } else {
+      setSelectedOrderDocUrls({});
+    }
+  }, [selectedOrder]);
 
   async function fetchInitialActivityLogs() {
     try {
@@ -390,11 +454,45 @@ export default function AdminDashboard() {
         message: defaultMsg,
       });
 
+      playNotificationChime("success");
       await fetchOrders(true);
     } catch (err) {
       alert("Status update failed: " + err.message);
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleDownloadDocument(storagePath, originalName) {
+    try {
+      const s = supabase();
+      const { data, error } = await s.storage.from("documents").download(storagePath);
+      if (error) {
+        const { data: pub } = s.storage.from("documents").getPublicUrl(storagePath);
+        if (pub?.publicUrl) window.open(pub.publicUrl, "_blank");
+        return;
+      }
+      const blobUrl = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = originalName || "print-document";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      alert("Could not download file: " + e.message);
+    }
+  }
+
+  function handleCopyUtr(utr) {
+    if (!utr) return;
+    try {
+      navigator.clipboard.writeText(utr);
+      setCopiedUtr(true);
+      setTimeout(() => setCopiedUtr(false), 2000);
+    } catch (e) {
+      alert("UTR: " + utr);
     }
   }
 
@@ -458,33 +556,46 @@ export default function AdminDashboard() {
       const q = actionSearch.toLowerCase();
       result = result.filter(
         (a) =>
-          a.actionTitle?.toLowerCase().includes(q) ||
           a.userName?.toLowerCase().includes(q) ||
           a.userPhone?.toLowerCase().includes(q) ||
-          a.pageUrl?.toLowerCase().includes(q) ||
-          a.deviceInfo?.toLowerCase().includes(q) ||
-          a.sessionId?.toLowerCase().includes(q)
+          a.actionTitle?.toLowerCase().includes(q) ||
+          a.pageUrl?.toLowerCase().includes(q)
       );
     }
 
     return result;
   }, [actionLogs, actionFilter, actionSearch]);
 
-  // Key metrics
-  const totalRevenue = orders
-    .filter((o) => !["CANCELLED"].includes(o.status))
-    .reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+  // Order Metrics
+  const pendingPaymentCount = useMemo(
+    () => orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length,
+    [orders]
+  );
+  const inProgressCount = useMemo(
+    () => orders.filter((o) => ["PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY"].includes(o.status)).length,
+    [orders]
+  );
+  const totalRevenue = useMemo(
+    () => orders.filter((o) => o.status !== "CANCELLED").reduce((acc, curr) => acc + Number(curr.total || 0), 0),
+    [orders]
+  );
 
-  const pendingPaymentCount = orders.filter((o) => o.status === "PAYMENT_SUBMITTED").length;
-  const inProgressCount = orders.filter((o) => ["PAYMENT_VERIFIED", "PRINTING", "QUALITY_CHECK"].includes(o.status)).length;
-  const urgentAiCount = filteredOrders.filter((o) => o.aiPriority?.urgency === "HIGH").length;
+  // Check if selected order has an issue / refund ticket reported
+  const hasIssueReport = useMemo(() => {
+    if (!selectedOrder?.status_history) return false;
+    return selectedOrder.status_history.some(
+      (h) =>
+        h.status === "CANCELLED" ||
+        (h.message && /refund|replacement|defect|wrong|misprint|damage|issue/i.test(h.message))
+    );
+  }, [selectedOrder]);
 
   if (loading) {
     return (
-      <main className="wrap">
-        <div className="card" style={{ textAlign: "center", padding: 60 }}>
-          <RefreshCw size={28} className="spin-animation" style={{ margin: "0 auto 12px", color: "var(--primary)" }} />
-          <div style={{ fontSize: 16, fontWeight: 700 }}>Authenticating Admin Access...</div>
+      <main className="wrap" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+        <div style={{ textAlign: "center" }}>
+          <div className="spin-animation" style={{ width: 44, height: 44, borderRadius: "50%", border: "4px solid #e0e7ff", borderTopColor: "var(--primary)", margin: "0 auto 16px" }} />
+          <h3 style={{ fontSize: 18, fontWeight: 800 }}>Loading Admin Operations Hub...</h3>
         </div>
       </main>
     );
@@ -492,11 +603,11 @@ export default function AdminDashboard() {
 
   if (!isAdmin) {
     return (
-      <main className="wrap">
-        <div className="card" style={{ maxWidth: 500, margin: "60px auto", textAlign: "center", padding: 40 }}>
-          <ShieldAlert size={48} color="var(--danger)" style={{ margin: "0 auto 16px" }} />
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: "var(--danger)" }}>Admin Access Restricted</h2>
-          <p style={{ color: "var(--text-muted)", marginTop: 8, marginBottom: 20 }}>
+      <main className="wrap" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+        <div className="card" style={{ maxWidth: 440, textAlign: "center", padding: 36 }}>
+          <ShieldCheck size={48} color="#ef4444" style={{ margin: "0 auto 14px" }} />
+          <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>Admin Access Restricted</h2>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 20 }}>
             Only authorized administrators can access this portal.
           </p>
           <Link href="/orders" className="btn btn-sm">
@@ -520,7 +631,7 @@ export default function AdminDashboard() {
             </span>
           </div>
           <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
-            Real-time live user presence, action telemetry stream, queue management, and WhatsApp updates
+            Real-time live user presence, action telemetry stream, print document queue, and payment approvals
           </p>
         </div>
 
@@ -700,203 +811,92 @@ export default function AdminDashboard() {
       {/* TAB 1: LIVE ACTIVE USERS PRESENCE MONITOR */}
       {/* ========================================================= */}
       {adminTab === "live_users" && (
-        <div className="no-print fast-pop-anim">
-          {/* Live Users Radar Hero */}
-          <div className="card" style={{
-            background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
-            color: "white",
-            padding: "24px 28px",
-            marginBottom: 24,
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            boxShadow: "0 20px 40px rgba(15, 23, 42, 0.35)"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+        <div className="fast-pop-anim">
+          <div className="card" style={{ marginBottom: 24, padding: "20px 24px", background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)", borderColor: "#a7f3d0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                  <div style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #10b981, #06b6d4)",
-                    display: "grid",
-                    placeItems: "center",
-                    boxShadow: "0 0 16px rgba(16, 185, 129, 0.5)"
-                  }}>
-                    <Radio size={20} color="white" />
-                  </div>
-                  <div>
-                    <h2 style={{ fontSize: 20, fontWeight: 900, letterSpacing: -0.3, margin: 0 }}>
-                      Live User Presence & Visitor Radar
-                    </h2>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                      Connected in real-time via Supabase Presence Channel • Sub-second accuracy
-                    </div>
-                  </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 12px #10b981" }} />
+                  <h2 style={{ fontSize: 18, fontWeight: 900, color: "#065f46", margin: 0 }}>
+                    Real-Time Customer Presence Radar ({liveUsers.length} Active)
+                  </h2>
                 </div>
-              </div>
-
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 16,
-                background: "rgba(255,255,255,0.08)",
-                padding: "10px 18px",
-                borderRadius: "var(--radius-md)",
-                backdropFilter: "blur(8px)",
-                border: "1px solid rgba(255,255,255,0.12)"
-              }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>ONLINE RIGHT NOW</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: "#4ade80" }}>{liveUsers.length}</div>
-                </div>
-                <div style={{ width: 1, height: 32, background: "rgba(255,255,255,0.15)" }} />
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>LOCALITY</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#38bdf8" }}>Boisar (401501)</div>
-                </div>
+                <p style={{ fontSize: 13, color: "#047857", margin: 0 }}>
+                  Tracks visitors live as they configure print settings, upload documents, and complete UPI checkout.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Active Users Grid */}
-          <div style={{ marginBottom: 24 }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <Users size={18} color="var(--primary)" />
-              <span>Active Connected Visitors ({liveUsers.length})</span>
-            </h3>
-
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
             {liveUsers.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: "48px 20px", color: "var(--text-muted)" }}>
-                <Users size={36} color="#cbd5e1" style={{ margin: "0 auto 10px" }} />
-                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text-main)" }}>No other visitors online right now</div>
-                <div style={{ fontSize: 13, marginTop: 4 }}>
-                  As soon as a customer opens the store, their live card and current action will appear here instantly.
-                </div>
+              <div className="card" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+                <Users size={36} color="#94a3b8" style={{ margin: "0 auto 12px" }} />
+                <div style={{ fontWeight: 800, fontSize: 16 }}>No Active Customers Online Right Now</div>
+                <p style={{ fontSize: 13, marginTop: 4 }}>Live presence updates automatically via Supabase Realtime when a visitor arrives.</p>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-                {liveUsers.map((user, idx) => {
-                  const isPlacingOrder = user.currentPath === "/order";
-                  const isTracking = user.currentPath?.startsWith("/orders/");
-
-                  return (
-                    <div
-                      key={user.sessionId || idx}
-                      className="card fast-pop-anim"
-                      style={{
-                        padding: 18,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        borderLeft: isPlacingOrder ? "4px solid #10b981" : isTracking ? "4px solid #06b6d4" : "4px solid var(--primary)",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      <div>
-                        {/* User Header */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <div style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: "50%",
-                              background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
-                              color: "white",
-                              display: "grid",
-                              placeItems: "center",
-                              fontWeight: 900,
-                              fontSize: 14,
-                              position: "relative"
-                            }}>
-                              {(user.name || "G")[0].toUpperCase()}
-                              <span style={{
-                                position: "absolute",
-                                bottom: -1,
-                                right: -1,
-                                width: 10,
-                                height: 10,
-                                borderRadius: "50%",
-                                background: "#10b981",
-                                border: "2px solid white"
-                              }} />
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text-main)" }}>
-                                {user.name || "Guest Visitor"}
-                              </div>
-                              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                                {user.phone ? `📞 ${user.phone}` : `ID: ${user.sessionId?.slice(-8)}`}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Live Status Badge */}
-                          <span style={{
-                            fontSize: 11,
-                            fontWeight: 800,
-                            background: isPlacingOrder ? "#ecfdf5" : isTracking ? "#e0f2fe" : "#f1f5f9",
-                            color: isPlacingOrder ? "#059669" : isTracking ? "#0284c7" : "#475569",
-                            padding: "3px 8px",
-                            borderRadius: 6,
-                            border: "1px solid rgba(0,0,0,0.06)"
-                          }}>
-                            {user.status || (isPlacingOrder ? "Placing Order" : "Active")}
-                          </span>
-                        </div>
-
-                        {/* Page & Device Info */}
-                        <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12, border: "1px solid var(--border)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                            <Compass size={13} color="var(--primary)" />
-                            <span style={{ color: "var(--text-muted)" }}>Current Page:</span>
-                            <code style={{ background: "white", padding: "1px 6px", borderRadius: 4, fontWeight: 700, color: "var(--text-main)" }}>
-                              {user.currentPath || "/"}
-                            </code>
-                          </div>
-
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--text-muted)", fontSize: 11, marginTop: 6 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <Laptop size={12} />
-                              <span>{user.deviceInfo || "Desktop"}</span>
-                            </span>
-                            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <MapPin size={12} color="#059669" />
-                              <span>{user.locality || "Boisar, MH"}</span>
-                            </span>
-                          </div>
-                        </div>
+              liveUsers.map((u, i) => (
+                <div
+                  key={u.sessionId || i}
+                  className="card"
+                  style={{
+                    padding: "18px 20px",
+                    borderLeft: "4px solid #10b981",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    cursor: "pointer",
+                    transition: "transform 0.2s, box-shadow 0.2s"
+                  }}
+                  onClick={() => setSelectedUserInspect(u)}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #10b981, #06b6d4)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, fontSize: 15 }}>
+                        {(u.name || "G")[0]}
                       </div>
-
-                      {/* Footer Actions */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                          Online: <FormattedDate date={user.onlineAt || new Date().toISOString()} />
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => setSelectedUserInspect(user)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: 11, padding: "4px 8px" }}
-                        >
-                          <History size={12} />
-                          <span>View History</span>
-                        </button>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--text-main)" }}>
+                          {u.name || "Guest Customer"}
+                        </div>
+                        {u.phone && <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>📞 {u.phone}</div>}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <span style={{ fontSize: 11, background: "#ecfdf5", color: "#065f46", fontWeight: 900, padding: "3px 8px", borderRadius: 999, border: "1px solid #a7f3d0" }}>
+                      ACTIVE
+                    </span>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: 8, fontSize: 12, border: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <Compass size={13} color="var(--primary)" />
+                      <span><b>Current Route:</b> <code>{u.currentPath || "/"}</code></span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-muted)" }}>
+                      <Laptop size={13} />
+                      <span>{u.deviceInfo || "Desktop Browser"}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, color: "var(--text-muted)" }}>
+                    <span>📍 {u.locality || "Boisar, Maharashtra"}</span>
+                    <span style={{ color: "var(--primary)", fontWeight: 700 }}>Click to Inspect ➔</span>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* TAB 2: REAL-TIME USER ACTIONS TELEMETRY STREAM */}
+      {/* TAB 2: REAL-TIME ACTION STREAM & TELEMETRY */}
       {/* ========================================================= */}
       {adminTab === "actions_stream" && (
-        <div className="no-print fast-pop-anim">
+        <div className="fast-pop-anim">
           {/* Action Stream Controls */}
           <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
@@ -1115,7 +1115,7 @@ export default function AdminDashboard() {
                 <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
                 <input
                   type="text"
-                  placeholder="Search by order #, recipient name, phone, address..."
+                  placeholder="Search by order #, recipient name, phone, UTR, address..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   style={{
@@ -1179,7 +1179,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Orders Table */}
+          {/* Orders Table with Direct File & Payment SS Visuals */}
           <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
             <div className="table-container" style={{ border: "none" }}>
               <table className="table">
@@ -1188,8 +1188,9 @@ export default function AdminDashboard() {
                     <th>AI Priority</th>
                     <th>Order Number</th>
                     <th>Recipient / Customer</th>
-                    <th>Print Specifications</th>
-                    <th>Fulfillment</th>
+                    <th>Print Documents</th>
+                    <th>Payment &amp; Proof</th>
+                    <th>Specs &amp; Delivery</th>
                     <th>Total</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -1198,13 +1199,16 @@ export default function AdminDashboard() {
                 <tbody>
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
+                      <td colSpan="9" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
                         No orders found matching your criteria.
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map((o) => {
                       const p = o.aiPriority;
+                      const fileCount = o.order_files ? o.order_files.length : 0;
+                      const hasProof = Boolean(o.payment_proof_path);
+
                       return (
                         <tr key={o.id}>
                           <td>
@@ -1219,16 +1223,74 @@ export default function AdminDashboard() {
                               {p?.score || 50} pts
                             </span>
                           </td>
-                          <td style={{ fontWeight: 800, fontFamily: "monospace" }}>{o.order_number}</td>
+                          <td style={{ fontWeight: 800, fontFamily: "monospace" }}>
+                            <div>{o.order_number}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                              <FormattedDate date={o.created_at} />
+                            </div>
+                          </td>
                           <td>
                             <div style={{ fontWeight: 700 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
                             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{o.customer_phone || o.profiles?.phone || "N/A"}</div>
                           </td>
-                          <td style={{ fontSize: 12 }}>
-                            <b>{o.paper_size}</b> • {o.color_mode === "COLOR" ? "Color" : "B&W"} • {o.page_count}pgs × {o.copies}cps
+                          {/* Uploaded Print Files */}
+                          <td>
+                            {fileCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrder(o)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: 12, padding: "4px 8px", background: "#eef2ff", color: "var(--primary)", borderColor: "#c7d2fe" }}
+                                title="Click to view & download print documents"
+                              >
+                                <FileText size={13} />
+                                <span><b>{fileCount}</b> {fileCount === 1 ? "File" : "Files"}</span>
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11.5, color: "var(--text-light)" }}>No files</span>
+                            )}
                           </td>
+                          {/* Payment Screenshot & UTR */}
+                          <td>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              {hasProof ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOrder(o)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    background: "#ecfdf5",
+                                    color: "#166534",
+                                    border: "1px solid #a7f3d0",
+                                    borderRadius: 6,
+                                    padding: "3px 8px",
+                                    fontSize: 11.5,
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    width: "fit-content"
+                                  }}
+                                  title="Click to view full payment screenshot"
+                                >
+                                  <span>🖼️ SS Attached</span>
+                                </button>
+                              ) : (
+                                <span style={{ fontSize: 11, color: "#d97706", background: "#fef3c7", padding: "2px 6px", borderRadius: 4, width: "fit-content", fontWeight: 700 }}>
+                                  ⏳ SS Pending
+                                </span>
+                              )}
+                              {o.upi_utr && (
+                                <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)", fontWeight: 700 }}>
+                                  UTR: {o.upi_utr}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          {/* Specs & Fulfillment */}
                           <td style={{ fontSize: 12 }}>
-                            {o.delivery_mode === "DELIVERY" ? "🚚 Boisar Delivery (+₹30)" : "🏪 Store Pickup"}
+                            <div><b>{o.paper_size}</b> • {o.color_mode === "COLOR" ? "Color" : "B&W"}</div>
+                            <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{o.page_count}pgs × {o.copies}cps • {o.delivery_mode === "DELIVERY" ? "🚚 Delivery" : "🏪 Pickup"}</div>
                           </td>
                           <td style={{ fontWeight: 900, color: "var(--primary)" }}>₹{o.total}.00</td>
                           <td>
@@ -1240,6 +1302,7 @@ export default function AdminDashboard() {
                             <button
                               onClick={() => setSelectedOrder(o)}
                               className="btn btn-secondary btn-sm"
+                              style={{ fontWeight: 800 }}
                             >
                               <Eye size={13} />
                               <span>Manage</span>
@@ -1310,32 +1373,312 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Manage Order Modal */}
+      {/* ========================================================= */}
+      {/* MANAGE ORDER MODAL (Full Files, Payment SS & Controls) */}
+      {/* ========================================================= */}
       {selectedOrder && (
         <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
           <div
             className="card"
-            style={{ maxWidth: 840, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}
+            style={{ maxWidth: 880, width: "100%", maxHeight: "92vh", overflowY: "auto", position: "relative" }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Modal Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
               <div>
-                <h2 style={{ fontSize: 20, fontWeight: 900 }}>Manage Order #{selectedOrder.order_number}</h2>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Placed on <FormattedDate date={selectedOrder.created_at} /></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>Order #{selectedOrder.order_number}</h2>
+                  <span className={`status-badge status-${selectedOrder.status}`}>
+                    {selectedOrder.status?.replaceAll("_", " ")}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  Placed on <FormattedDate date={selectedOrder.created_at} /> • Total Amount: <b style={{ color: "var(--primary)" }}>₹{selectedOrder.total}.00</b>
+                </div>
               </div>
 
               <button
                 onClick={() => setSelectedOrder(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
               >
-                <X size={20} />
+                <X size={22} />
               </button>
+            </div>
+
+            {/* Issue / Refund Ticket Alert Banner */}
+            {hasIssueReport && (
+              <div style={{
+                background: "#fef2f2",
+                border: "1px solid #fca5a5",
+                borderRadius: "var(--radius-md)",
+                padding: "14px 16px",
+                marginBottom: 18,
+                color: "#991b1b"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, fontSize: 14, marginBottom: 4 }}>
+                  <AlertTriangle size={18} color="#dc2626" />
+                  <span>Customer Support / Refund Request Logged</span>
+                </div>
+                <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#7f1d1d" }}>
+                  The customer has reported an issue or requested a refund / replacement for this order. Check status history log below and contact customer immediately.
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <a
+                    href={buildWhatsAppLink(selectedOrder.customer_phone, `Hello ${selectedOrder.customer_name || "Customer"}, regarding your issue report on Order #${selectedOrder.order_number}, our store manager is here to assist you with free replacement or refund.`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-whatsapp btn-sm"
+                    style={{ fontSize: 12 }}
+                  >
+                    <MessageCircle size={14} />
+                    <span>WhatsApp Customer to Resolve Issue</span>
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Grid with 2 Columns: Files & Customer Info + Payment SS */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16, marginBottom: 20 }}>
+              
+              {/* SECTION A: UPLOADED PRINT DOCUMENTS */}
+              <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 14 }}>
+                    <Printer size={16} color="var(--primary)" />
+                    <span>Uploaded Print Documents</span>
+                  </div>
+                  <span style={{ background: "var(--primary-light)", color: "var(--primary)", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999 }}>
+                    {selectedOrder.order_files ? selectedOrder.order_files.length : 0} {selectedOrder.order_files?.length === 1 ? "file" : "files"}
+                  </span>
+                </div>
+
+                {(!selectedOrder.order_files || selectedOrder.order_files.length === 0) ? (
+                  <div style={{ textAlign: "center", padding: "24px 10px", color: "var(--text-muted)", fontSize: 13 }}>
+                    <FileText size={28} color="#cbd5e1" style={{ margin: "0 auto 8px" }} />
+                    <div>No files uploaded in database.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {selectedOrder.order_files.map((file, idx) => {
+                      const docUrl = selectedOrderDocUrls[file.id];
+                      const fileSizeMb = file.size ? (file.size / (1024 * 1024)).toFixed(2) + " MB" : "Document";
+
+                      return (
+                        <div
+                          key={file.id || idx}
+                          style={{
+                            background: "white",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            padding: "10px 14px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 10
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 6, background: "#eef2ff", color: "var(--primary)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                              <FileText size={16} />
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }} title={file.original_name}>
+                                {file.original_name || `Document_${idx + 1}`}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{fileSizeMb}</div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            {docUrl ? (
+                              <a
+                                href={docUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "5px 9px", fontSize: 12 }}
+                                title="Open / Preview file in new tab"
+                              >
+                                <ExternalLink size={13} />
+                                <span>Preview</span>
+                              </a>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadDocument(file.storage_path, file.original_name)}
+                              className="btn btn-sm"
+                              style={{ padding: "5px 10px", fontSize: 12, background: "var(--primary)", color: "white" }}
+                              title="Download document for printing"
+                            >
+                              <Download size={13} />
+                              <span>Download</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION B: PAYMENT SCREENSHOT & UTR VERIFICATION */}
+              <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 14 }}>
+                    <IndianRupee size={16} color="#16a34a" />
+                    <span>Payment Verification &amp; SS</span>
+                  </div>
+                  {selectedOrder.status === "PAYMENT_VERIFIED" ? (
+                    <span style={{ background: "#ecfdf5", color: "#166534", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999, border: "1px solid #a7f3d0" }}>
+                      ✅ VERIFIED
+                    </span>
+                  ) : (
+                    <span style={{ background: "#fef3c7", color: "#b45309", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999, border: "1px solid #fde68a" }}>
+                      REVIEW NEEDED
+                    </span>
+                  )}
+                </div>
+
+                {/* 12-Digit UTR Number */}
+                <div style={{ background: "white", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>UPI Transaction Ref (UTR):</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, fontFamily: "monospace", color: "var(--text-main)" }}>
+                      {selectedOrder.upi_utr || "No UTR Entered"}
+                    </div>
+                  </div>
+                  {selectedOrder.upi_utr && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopyUtr(selectedOrder.upi_utr)}
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: 11, padding: "4px 8px" }}
+                    >
+                      {copiedUtr ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                      <span>{copiedUtr ? "Copied" : "Copy"}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Screenshot Image Preview */}
+                {selectedOrderProofUrl ? (
+                  <div>
+                    <div
+                      style={{
+                        position: "relative",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        border: "2px solid #bbf7d0",
+                        cursor: "pointer",
+                        maxHeight: 180,
+                        textAlign: "center",
+                        background: "#000"
+                      }}
+                      onClick={() => setPreviewImage(selectedOrderProofUrl)}
+                      title="Click to zoom payment screenshot"
+                    >
+                      <img
+                        src={selectedOrderProofUrl}
+                        alt="Payment Screenshot"
+                        style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain", margin: "0 auto", display: "block" }}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: "rgba(0,0,0,0.7)",
+                        color: "white",
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 4
+                      }}>
+                        <Eye size={12} />
+                        <span>Click to view Full-Screen Screenshot</span>
+                      </div>
+                    </div>
+
+                    {/* Quick Approve Button */}
+                    {selectedOrder.status !== "PAYMENT_VERIFIED" && selectedOrder.status !== "CANCELLED" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", `Payment verified via UPI screenshot (UTR: ${selectedOrder.upi_utr || "Verified"}). Proceeding to laser printing.`);
+                        }}
+                        className="btn btn-success"
+                        style={{ width: "100%", justifyContent: "center", marginTop: 12, fontWeight: 900 }}
+                      >
+                        <CheckCircle2 size={16} />
+                        <span>Approve &amp; Confirm Payment (₹{selectedOrder.total}.00)</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--text-muted)", fontSize: 12 }}>
+                    <AlertCircle size={24} color="#f59e0b" style={{ margin: "0 auto 6px" }} />
+                    <div>Customer hasn't uploaded payment screenshot yet.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Customer & Fulfillment Details */}
+            <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 20 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10, color: "var(--text-muted)" }}>
+                Customer &amp; Fulfillment Specs
+              </h4>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, fontSize: 13 }}>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Recipient:</span>
+                  <div style={{ fontWeight: 800 }}>{selectedOrder.customer_name || selectedOrder.profiles?.name || "Customer"}</div>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Phone Number:</span>
+                  <div style={{ fontWeight: 800 }}>
+                    <a href={`tel:${selectedOrder.customer_phone}`} style={{ color: "var(--primary)", textDecoration: "none" }}>
+                      📞 {selectedOrder.customer_phone || selectedOrder.profiles?.phone || "N/A"}
+                    </a>
+                  </div>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Print Job:</span>
+                  <div style={{ fontWeight: 800 }}>{selectedOrder.paper_size} • {selectedOrder.color_mode === "COLOR" ? "Full Colour" : "B&W"} • {selectedOrder.sides === "DOUBLE" ? "Double Sided" : "Single Sided"}</div>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Pages × Copies:</span>
+                  <div style={{ fontWeight: 800 }}>{selectedOrder.page_count} pages × {selectedOrder.copies} copy(s)</div>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Binding:</span>
+                  <div style={{ fontWeight: 800 }}>{selectedOrder.binding_type || "No Binding"}</div>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-muted)" }}>Fulfillment:</span>
+                  <div style={{ fontWeight: 800 }}>{selectedOrder.delivery_mode === "DELIVERY" ? "🚚 Doorstep Delivery" : "🏪 Counter Pickup"}</div>
+                </div>
+              </div>
+              {selectedOrder.address && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12.5 }}>
+                  <span style={{ color: "var(--text-muted)" }}>📍 Delivery Address:</span>
+                  <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{selectedOrder.address}</div>
+                </div>
+              )}
+              {selectedOrder.notes && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#854d0e", background: "#fef9c3", padding: "6px 10px", borderRadius: 6 }}>
+                  <b>Customer Notes:</b> {selectedOrder.notes}
+                </div>
+              )}
             </div>
 
             {/* Status Transition Row */}
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 13, fontWeight: 700, display: "block", marginBottom: 8 }}>
-                Change Production / Delivery Status:
+              <label style={{ fontSize: 13, fontWeight: 800, display: "block", marginBottom: 8 }}>
+                Update Order Stage:
               </label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {STATUS_LIST.filter((s) => s.key !== "ALL").map((st) => {
@@ -1383,6 +1726,52 @@ export default function AdminDashboard() {
               >
                 <MessageCircle size={14} />
                 <span>Send WhatsApp Live Update</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-Screen Payment Screenshot Zoom Modal */}
+      {previewImage && (
+        <div className="modal-backdrop" onClick={() => setPreviewImage(null)} style={{ zIndex: 99999 }}>
+          <div style={{ maxWidth: 800, width: "90%", position: "relative", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: "absolute",
+                top: -14,
+                right: -14,
+                background: "white",
+                border: "none",
+                borderRadius: "50%",
+                width: 36,
+                height: 36,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                boxShadow: "0 4px 15px rgba(0,0,0,0.3)"
+              }}
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={previewImage}
+              alt="Full Payment Screenshot"
+              style={{ width: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: 12, background: "#000" }}
+            />
+            <div style={{ marginTop: 10 }}>
+              <a
+                href={previewImage}
+                download="payment-screenshot.png"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary btn-sm"
+                style={{ background: "rgba(255,255,255,0.9)" }}
+              >
+                <Download size={14} />
+                <span>Download Screenshot File</span>
               </a>
             </div>
           </div>

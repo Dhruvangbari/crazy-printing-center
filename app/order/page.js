@@ -36,6 +36,7 @@ import {
 import { countDocumentPages } from "../../lib/pageCounter";
 import BoisarDeliveryMap from "../../components/BoisarDeliveryMap";
 import { logUserAction } from "../../lib/telemetry";
+import { playChime } from "../../lib/webNotifications";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -642,9 +643,10 @@ export default function Order() {
         }).catch(() => {});
       } catch (e) {}
 
-      // Fast celebration confetti animation
+      // Fast celebration confetti animation & audio chime
       setOrderSuccess(true);
       triggerConfetti();
+      playChime("success");
 
       logUserAction("ORDER_PLACED", `Placed Order #${order.order_number} for ₹${order.total}.00`, {
         orderId: order.id,

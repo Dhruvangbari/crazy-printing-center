@@ -38,6 +38,8 @@ import {
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
 import { logUserAction } from "../../../lib/telemetry";
+import { playChime } from "../../../lib/webNotifications";
+import { openWhatsAppChat } from "../../../lib/whatsapp";
 
 export default function Detail() {
   const p = useParams();
@@ -58,6 +60,72 @@ export default function Detail() {
   const [cancelReason, setCancelReason] = useState("Uploaded wrong document / Need to change file");
   const [cancelNotes, setCancelNotes] = useState("");
   const [cancelling, setCancelling] = useState(false);
+
+  // Issue / Refund & Replacement Modal State
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [issueType, setIssueType] = useState("MISPRINT");
+  const [issueResolution, setIssueResolution] = useState("REPLACEMENT"); // "REPLACEMENT" | "REFUND"
+  const [issueDesc, setIssueDesc] = useState("");
+  const [issueSubmitting, setIssueSubmitting] = useState(false);
+  const [issueSubmitted, setIssueSubmitted] = useState(false);
+
+  async function handleReportIssue(e) {
+    e.preventDefault();
+    if (!o) return;
+    setIssueSubmitting(true);
+    try {
+      const s = supabase();
+      const issueLabelMap = {
+        MISPRINT: "Print Quality / Misprint / Blurred Text",
+        MISSING_PAGES: "Wrong Pages / Missing Pages",
+        BINDING_SIZE: "Wrong Paper Size / Binding Issue",
+        DAMAGE: "Damaged in Delivery / Folded Package",
+        PAYMENT_ISSUE: "Payment Deducted Twice / Overcharged",
+        OTHER: "Other Issue"
+      };
+
+      const typeLabel = issueLabelMap[issueType] || issueType;
+      const resolutionLabel = issueResolution === "REFUND" ? "Instant UPI Refund" : "Free Reprint & Replacement";
+      const message = `🚨 Issue Reported by Customer: [${typeLabel}] -> Requested Resolution: [${resolutionLabel}]. Details: "${issueDesc.trim()}".`;
+
+      // 1. Insert into status history
+      await s.from("status_history").insert({
+        order_id: o.id,
+        status: o.status,
+        message: message,
+      });
+
+      // 2. Play alert chime
+      playChime("alert");
+
+      // 3. Construct WhatsApp escalation text
+      const waText = 
+        `🚨 *ISSUE & REFUND REPORT — DHRUVANG CRAZY PRINTING*\n` +
+        `--------------------------------\n` +
+        `📦 *Order Ref:* #${o.order_number}\n` +
+        `👤 *Customer Name:* ${o.customer_name || "Customer"}\n` +
+        `📞 *Phone:* ${o.customer_phone || "N/A"}\n` +
+        `⚠️ *Issue Type:* ${typeLabel}\n` +
+        `🔄 *Requested Action:* ${resolutionLabel}\n` +
+        `💬 *Description:* ${issueDesc.trim()}\n` +
+        `💰 *Order Total:* ₹${o.total}.00\n` +
+        `--------------------------------\n` +
+        `Please resolve this issue immediately.`;
+
+      openWhatsAppChat("8857871669", waText);
+
+      setIssueSubmitted(true);
+      setTimeout(() => {
+        setShowIssueModal(false);
+        setIssueSubmitted(false);
+        loadOrder(false);
+      }, 2000);
+    } catch (err) {
+      alert("Failed to report issue: " + err.message);
+    } finally {
+      setIssueSubmitting(false);
+    }
+  }
 
   async function handleCustomerCancel() {
     if (!o) return;
@@ -314,6 +382,7 @@ export default function Detail() {
         total: o.total,
       });
 
+      playChime("success");
       setMsg("🤖 AI Inspector: Payment submitted with 12-digit UTR! Admin notified to verify and begin laser printing.");
       setTimeout(() => location.reload(), 1500);
     } catch (err) {
@@ -454,6 +523,18 @@ export default function Detail() {
               >
                 <MessageCircle size={15} />
                 <span>Send PDF to WhatsApp 📲</span>
+              </button>
+
+              {/* Report Defect / Wrong Product / Request Refund */}
+              <button
+                type="button"
+                onClick={() => setShowIssueModal(true)}
+                className="btn btn-secondary btn-sm"
+                style={{ borderColor: "#fde047", background: "#fefce8", color: "#854d0e", fontWeight: 700 }}
+                title="Report issue, defective print, or request refund/replacement"
+              >
+                <AlertTriangle size={15} color="#ca8a04" />
+                <span>Report Issue / Refund</span>
               </button>
 
               {o.status !== "CANCELLED" && (
@@ -741,25 +822,59 @@ export default function Detail() {
                   </div>
 
                   <div className="field" style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      Payment Screenshot Proof <span style={{ color: "var(--danger)" }}>*</span>
+                    <label style={{ fontSize: 13, fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        📸 Payment Screenshot Proof <span style={{ color: "var(--danger)" }}>* (Mandatory)</span>
+                      </span>
+                      {proof && (
+                        <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>
+                          ✓ File Selected
+                        </span>
+                      )}
                     </label>
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => setProof(e.target.files[0])}
+                      onChange={(e) => setProof(e.target.files?.[0] || null)}
                       required
+                      style={{
+                        padding: "8px 10px",
+                        border: proof ? "2px solid #22c55e" : "1px dashed var(--primary)",
+                        background: proof ? "#f0fdf4" : "#faf5ff",
+                        borderRadius: "var(--radius-md)"
+                      }}
                     />
+
+                    {/* Live Preview Thumbnail of Selected Screenshot */}
+                    {proof && (
+                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, background: "#f8fafc", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}>
+                        <img
+                          src={URL.createObjectURL(proof)}
+                          alt="Selected Screenshot"
+                          style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }}
+                        />
+                        <div style={{ fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{proof.name}</div>
+                          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{(proof.size / 1024).toFixed(1)} KB</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <button
                     type="submit"
                     disabled={loading || !proof || utrNumber.length < 8}
                     className="btn"
-                    style={{ width: "100%" }}
+                    style={{
+                      width: "100%",
+                      justifyContent: "center",
+                      fontWeight: 800,
+                      opacity: (!proof || utrNumber.length < 8) ? 0.6 : 1,
+                      cursor: (!proof || utrNumber.length < 8) ? "not-allowed" : "pointer"
+                    }}
                   >
                     <UploadCloud size={16} />
-                    <span>{loading ? "Verifying & Submitting..." : "Submit Verified Payment"}</span>
+                    <span>{loading ? "Verifying & Submitting..." : "Submit Verified Payment & Screenshot"}</span>
                   </button>
                 </form>
 
@@ -951,6 +1066,178 @@ export default function Detail() {
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Customer Issue, Defective Print & Refund/Replacement Modal */}
+      {showIssueModal && (
+        <div className="modal-backdrop" onClick={() => setShowIssueModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 560, padding: "24px 24px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#fef3c7", color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#0f172a" }}>Report Issue / Request Refund</h3>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>Order #{o?.order_number} • Total ₹{o?.total}.00</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowIssueModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {issueSubmitted ? (
+              <div style={{ textAlign: "center", padding: "24px 10px" }}>
+                <div style={{ width: 50, height: 50, borderRadius: "50%", background: "#ecfdf5", color: "#10b981", display: "grid", placeItems: "center", margin: "0 auto 12px" }}>
+                  <CheckCircle2 size={30} />
+                </div>
+                <h4 style={{ fontSize: 16, fontWeight: 800, color: "#065f46", margin: "0 0 6px" }}>
+                  Issue Ticket Logged &amp; Escalated!
+                </h4>
+                <p style={{ fontSize: 13, color: "#047857", margin: 0 }}>
+                  Opening WhatsApp support with our store manager to resolve your refund or replacement immediately.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleReportIssue}>
+                {/* 1. Category of Defect / Problem */}
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 13, fontWeight: 800, color: "#334155", marginBottom: 6, display: "block" }}>
+                    What issue occurred with your print job? <span style={{ color: "var(--danger)" }}>*</span>
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {[
+                      { key: "MISPRINT", label: "🖨️ Quality / Misprint" },
+                      { key: "MISSING_PAGES", label: "📄 Wrong / Missing Pages" },
+                      { key: "BINDING_SIZE", label: "📏 Paper / Binding Issue" },
+                      { key: "DAMAGE", label: "📦 Damaged in Delivery" },
+                      { key: "PAYMENT_ISSUE", label: "💳 Double UPI Charge" },
+                      { key: "OTHER", label: "❓ Other Issue" },
+                    ].map((item) => (
+                      <button
+                        type="button"
+                        key={item.key}
+                        onClick={() => setIssueType(item.key)}
+                        style={{
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: issueType === item.key ? "2px solid var(--primary)" : "1px solid var(--border)",
+                          background: issueType === item.key ? "#eef2ff" : "#ffffff",
+                          color: issueType === item.key ? "var(--primary)" : "var(--text-main)",
+                          fontSize: 12.5,
+                          fontWeight: issueType === item.key ? 800 : 500,
+                          cursor: "pointer"
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Choose Resolution */}
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 13, fontWeight: 800, color: "#334155", marginBottom: 6, display: "block" }}>
+                    How would you like us to resolve this? <span style={{ color: "var(--danger)" }}>*</span>
+                  </label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <label style={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: issueResolution === "REPLACEMENT" ? "2px solid #10b981" : "1px solid var(--border)",
+                      background: issueResolution === "REPLACEMENT" ? "#ecfdf5" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: 12.5,
+                      fontWeight: issueResolution === "REPLACEMENT" ? 800 : 500,
+                      color: issueResolution === "REPLACEMENT" ? "#065f46" : "var(--text-main)"
+                    }}>
+                      <input
+                        type="radio"
+                        name="resolution"
+                        value="REPLACEMENT"
+                        checked={issueResolution === "REPLACEMENT"}
+                        onChange={() => setIssueResolution("REPLACEMENT")}
+                        style={{ accentColor: "#10b981" }}
+                      />
+                      <span>🔁 Free Reprint &amp; Replacement</span>
+                    </label>
+
+                    <label style={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: issueResolution === "REFUND" ? "2px solid #0284c7" : "1px solid var(--border)",
+                      background: issueResolution === "REFUND" ? "#f0f9ff" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: 12.5,
+                      fontWeight: issueResolution === "REFUND" ? 800 : 500,
+                      color: issueResolution === "REFUND" ? "#0369a1" : "var(--text-main)"
+                    }}>
+                      <input
+                        type="radio"
+                        name="resolution"
+                        value="REFUND"
+                        checked={issueResolution === "REFUND"}
+                        onChange={() => setIssueResolution("REFUND")}
+                        style={{ accentColor: "#0284c7" }}
+                      />
+                      <span>💰 Instant UPI Refund</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3. Description Notes */}
+                <div className="field" style={{ marginBottom: 18 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: "#334155", marginBottom: 4, display: "block" }}>
+                    Please explain the defect or issue: <span style={{ color: "var(--danger)" }}>*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Describe what was wrong with the print or delivery..."
+                    value={issueDesc}
+                    onChange={(e) => setIssueDesc(e.target.value)}
+                    required
+                    style={{ fontSize: 13, width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                  />
+                </div>
+
+                {/* 4. Action Buttons */}
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowIssueModal(false)}
+                    disabled={issueSubmitting}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={issueSubmitting || !issueDesc.trim()}
+                    className="btn btn-sm"
+                    style={{ background: "#d97706", color: "white", fontWeight: 800 }}
+                  >
+                    {issueSubmitting ? "Submitting Ticket..." : "Submit Ticket & Contact Store 📲"}
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         </div>
