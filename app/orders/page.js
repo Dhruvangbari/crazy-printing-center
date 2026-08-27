@@ -17,7 +17,6 @@ import {
   Sparkles,
   Zap
 } from "lucide-react";
-import { calculateOrderPriority } from "../../lib/aiOrderAgent";
 
 export default function Orders() {
   const router = useRouter();

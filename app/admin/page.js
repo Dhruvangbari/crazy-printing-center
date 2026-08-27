@@ -38,30 +38,38 @@ import {
   Volume2,
   VolumeX,
   AlertCircle,
-  Store
+  Store,
+  Trash2,
+  CheckSquare,
+  Square,
+  Package,
+  Layers,
+  ArrowRight,
+  SlidersHorizontal
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
 import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
-import { calculateOrderPriority } from "../../lib/aiOrderAgent";
 
 const STATUS_LIST = [
-  { key: "ALL", label: "All Orders" },
+  { key: "ALL", label: "All Statuses" },
   { key: "ORDER_RECEIVED", label: "Order Received" },
   { key: "PAYMENT_SUBMITTED", label: "Payment Submitted" },
   { key: "PAYMENT_VERIFIED", label: "Payment Verified" },
   { key: "PRINTING", label: "Printing" },
   { key: "QUALITY_CHECK", label: "Quality Check" },
-  { key: "READY", label: "Ready" },
+  { key: "READY", label: "Ready for Pickup" },
   { key: "OUT_FOR_DELIVERY", label: "Out For Delivery" },
-  { key: "DELIVERED", label: "Delivered" },
+  { key: "DELIVERED", label: "Delivered (Fulfilled)" },
   { key: "CANCELLED", label: "Cancelled" },
 ];
 
 const SORT_OPTIONS = [
-  { key: "AI_PRIORITY", label: "🤖 AI Smart Priority (Highest First)" },
   { key: "NEWEST", label: "⏱️ Newest First" },
-  { key: "VALUE", label: "💰 Highest Total First" },
-  { key: "PAGES", label: "📄 Quickest (Fewest Pages)" },
+  { key: "OLDEST", label: "⏳ Oldest First" },
+  { key: "VALUE_HIGH", label: "💰 Highest Total First" },
+  { key: "VALUE_LOW", label: "💵 Lowest Total First" },
+  { key: "MOST_PAGES", label: "📄 Most Pages" },
+  { key: "FEWEST_PAGES", label: "📑 Fewest Pages" },
 ];
 
 const ACTION_CATEGORIES = [
@@ -73,6 +81,16 @@ const ACTION_CATEGORIES = [
   { key: "PAGE_VIEW", label: "🧭 Page Navigation" },
 ];
 
+const UNDELIVERED_STATUSES = [
+  "ORDER_RECEIVED",
+  "PAYMENT_SUBMITTED",
+  "PAYMENT_VERIFIED",
+  "PRINTING",
+  "QUALITY_CHECK",
+  "READY",
+  "OUT_FOR_DELIVERY",
+];
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -81,17 +99,26 @@ export default function AdminDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [sortBy, setSortBy] = useState("AI_PRIORITY");
+  const [sortBy, setSortBy] = useState("NEWEST");
   const [updating, setUpdating] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
+  const [jobSlipOrder, setJobSlipOrder] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState("");
 
-  // ==========================================
-  // REAL-TIME LIVE USERS & TELEMETRY STATE
-  // ==========================================
-  const [adminTab, setAdminTab] = useState("orders"); // "orders" | "live_users" | "actions_stream"
+  // Navigation & Queue Tabs: "active_orders" | "delivered_orders" | "cancelled_orders" | "all_orders" | "live_users" | "actions_stream"
+  const [adminTab, setAdminTab] = useState("active_orders");
+
+  // Multi-Select Batch Actions
+  const [selectedOrderIds, setSelectedOrderIds] = useState([]);
+
+  // Database Tools / Clear Orders Modal
+  const [showDbToolsModal, setShowDbToolsModal] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  const [dbActionLoading, setDbActionLoading] = useState(false);
+
+  // Realtime Live Users & Telemetry State
   const [liveUsers, setLiveUsers] = useState([]);
   const [actionLogs, setActionLogs] = useState([]);
   const [actionFilter, setActionFilter] = useState("ALL");
@@ -224,10 +251,10 @@ export default function AdminDashboard() {
       console.warn("Admin realtime sync error:", e);
     }
 
-    // 4. Initial fetch of persistent activity logs
+    // 4. Initial fetch of activity logs
     fetchInitialActivityLogs();
 
-    // 5. Auto-refresh polling backup every 5 seconds for orders and active telemetry
+    // 5. Polling interval backup
     const interval = setInterval(() => {
       fetchOrders(true);
       fetchInitialActivityLogs();
@@ -255,47 +282,57 @@ export default function AdminDashboard() {
 
     const s = supabase();
 
-    // 1. Fetch Payment Proof Image URL
+    // Load Payment Screenshot Proof
     if (selectedOrder.payment_proof_path) {
-      s.storage
-        .from("payment-proofs")
-        .createSignedUrl(selectedOrder.payment_proof_path, 3600)
-        .then(({ data, error }) => {
-          if (!error && data?.signedUrl) {
-            setSelectedOrderProofUrl(data.signedUrl);
-          } else {
-            const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(selectedOrder.payment_proof_path);
-            setSelectedOrderProofUrl(pub?.publicUrl || null);
-          }
-        })
-        .catch(() => {
-          const { data: pub } = s.storage.from("payment-proofs").getPublicUrl(selectedOrder.payment_proof_path);
-          setSelectedOrderProofUrl(pub?.publicUrl || null);
-        });
+      if (selectedOrder.payment_proof_path.startsWith("razorpay://")) {
+        setSelectedOrderProofUrl(null);
+      } else {
+        try {
+          s.storage
+            .from("payment-proofs")
+            .createSignedUrl(selectedOrder.payment_proof_path, 3600)
+            .then(({ data }) => {
+              if (data?.signedUrl) {
+                setSelectedOrderProofUrl(data.signedUrl);
+              } else {
+                const { data: pub } = s.storage
+                  .from("payment-proofs")
+                  .getPublicUrl(selectedOrder.payment_proof_path);
+                setSelectedOrderProofUrl(pub?.publicUrl || null);
+              }
+            })
+            .catch(() => setSelectedOrderProofUrl(null));
+        } catch (e) {
+          setSelectedOrderProofUrl(null);
+        }
+      }
     } else {
       setSelectedOrderProofUrl(null);
     }
 
-    // 2. Fetch Document Signed URLs for instant viewing
+    // Load Document Download/Preview URLs
     if (selectedOrder.order_files && selectedOrder.order_files.length > 0) {
       const urls = {};
-      Promise.all(
-        selectedOrder.order_files.map(async (file) => {
-          try {
-            const { data, error } = await s.storage.from("documents").createSignedUrl(file.storage_path, 3600);
-            if (!error && data?.signedUrl) {
-              urls[file.id] = data.signedUrl;
-            } else {
-              const { data: pub } = s.storage.from("documents").getPublicUrl(file.storage_path);
-              urls[file.id] = pub?.publicUrl || null;
-            }
-          } catch (e) {
-            const { data: pub } = s.storage.from("documents").getPublicUrl(file.storage_path);
-            urls[file.id] = pub?.publicUrl || null;
+      const promises = selectedOrder.order_files.map(async (file) => {
+        try {
+          const { data } = await s.storage
+            .from("documents")
+            .createSignedUrl(file.storage_path, 3600);
+          if (data?.signedUrl) {
+            urls[file.id] = data.signedUrl;
+          } else {
+            const { data: pub } = s.storage
+              .from("documents")
+              .getPublicUrl(file.storage_path);
+            urls[file.id] = pub?.publicUrl || "";
           }
-        })
-      ).then(() => {
-        setSelectedOrderDocUrls(urls);
+        } catch (err) {
+          urls[file.id] = "";
+        }
+      });
+
+      Promise.all(promises).then(() => {
+        setSelectedOrderDocUrls({ ...urls });
       });
     } else {
       setSelectedOrderDocUrls({});
@@ -339,9 +376,7 @@ export default function AdminDashboard() {
           return unique.slice(0, 200);
         });
       }
-    } catch (e) {
-      console.debug("Activity logs fetch warning:", e);
-    }
+    } catch (e) {}
   }
 
   async function checkAdminAndFetch() {
@@ -421,23 +456,9 @@ export default function AdminDashboard() {
     setRefreshing(false);
   }
 
-  async function handleStatusChange(orderId, newStatus, customMsg = "", allowOverride = false) {
+  async function handleStatusChange(orderId, newStatus, customMsg = "") {
     setUpdating(true);
     try {
-      const targetOrder = (orders || []).find((o) => o.id === orderId) || selectedOrder;
-
-      if (targetOrder?.status === "DELIVERED" && newStatus !== "DELIVERED" && !allowOverride) {
-        alert("⚠️ Action Blocked: This order has already been DELIVERED to the customer.");
-        setUpdating(false);
-        return;
-      }
-
-      if (targetOrder?.status === "CANCELLED" && newStatus !== "CANCELLED" && !allowOverride) {
-        alert("⚠️ This order is currently CANCELLED. Please use 'Restore Order' if you wish to reactivate it.");
-        setUpdating(false);
-        return;
-      }
-
       const s = supabase();
       const { error: orderError } = await s
         .from("orders")
@@ -449,41 +470,231 @@ export default function AdminDashboard() {
 
       if (orderError) throw orderError;
 
-      const defaultMsg = customMsg || `Status updated to ${newStatus.replaceAll("_", " ")} by Store Administrator.`;
+      const defaultMsgMap = {
+        ORDER_RECEIVED: "Order confirmed by shop admin.",
+        PAYMENT_SUBMITTED: "Payment submitted. Verifying reference.",
+        PAYMENT_VERIFIED: "Payment confirmed & verified by shop admin.",
+        PRINTING: "Job is currently on the high-speed production printer.",
+        QUALITY_CHECK: "Printing completed. Final binding & quality inspection underway.",
+        READY: "Print job is packed, verified, and READY for pickup at shop counter!",
+        OUT_FOR_DELIVERY: "Package dispatched with Boisar delivery courier.",
+        DELIVERED: "Order successfully delivered & completed! Thank you for printing with Dhruvang Crazy Printing Center.",
+        CANCELLED: "Order cancelled by administrator.",
+      };
+
+      const message = customMsg || defaultMsgMap[newStatus] || `Status updated to ${newStatus}`;
+
       await s.from("status_history").insert({
         order_id: orderId,
         status: newStatus,
-        message: defaultMsg,
+        message: message,
       });
 
       playNotificationChime("success");
       await fetchOrders(true);
     } catch (err) {
-      alert("Status update failed: " + err.message);
+      alert("Failed to update status: " + err.message);
     } finally {
       setUpdating(false);
     }
   }
 
-  async function handleDownloadDocument(storagePath, originalName) {
+  // ==========================================
+  // BULK BATCH ACTIONS
+  // ==========================================
+  function handleToggleSelect(orderId) {
+    setSelectedOrderIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
+  }
+
+  function handleSelectAllVisible() {
+    const visibleIds = displayedOrders.map((o) => o.id);
+    const allSelected = visibleIds.every((id) => selectedOrderIds.includes(id));
+    if (allSelected) {
+      setSelectedOrderIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedOrderIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  }
+
+  async function handleBulkStatusChange(newStatus) {
+    if (selectedOrderIds.length === 0) return;
+    const confirmMsg = `Are you sure you want to update ${selectedOrderIds.length} order(s) to "${newStatus.replaceAll("_", " ")}"?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setUpdating(true);
+    try {
+      const s = supabase();
+      for (const orderId of selectedOrderIds) {
+        await s.from("orders").update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        }).eq("id", orderId);
+
+        await s.from("status_history").insert({
+          order_id: orderId,
+          status: newStatus,
+          message: `Bulk status update to ${newStatus.replaceAll("_", " ")} by admin.`,
+        });
+      }
+      playNotificationChime("success");
+      setSelectedOrderIds([]);
+      await fetchOrders(false);
+    } catch (err) {
+      alert("Bulk update error: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handleBulkDeleteOrders() {
+    if (selectedOrderIds.length === 0) return;
+    const count = selectedOrderIds.length;
+    if (!window.confirm(`⚠️ CAUTION: Permanently delete ${count} selected order(s) from the database? This cannot be undone.`)) return;
+
+    setUpdating(true);
+    try {
+      const s = supabase();
+      // Delete child records first for safety
+      await s.from("order_files").delete().in("order_id", selectedOrderIds);
+      await s.from("status_history").delete().in("order_id", selectedOrderIds);
+      const { error } = await s.from("orders").delete().in("id", selectedOrderIds);
+      if (error) throw error;
+
+      playNotificationChime("success");
+      setSelectedOrderIds([]);
+      await fetchOrders(false);
+      alert(`✅ Successfully deleted ${count} order(s).`);
+    } catch (err) {
+      alert("Delete error: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  // ==========================================
+  // SINGLE ORDER DELETE
+  // ==========================================
+  async function handleDeleteSingleOrder(orderId, orderNumber) {
+    if (!window.confirm(`⚠️ Permanently delete Order #${orderNumber} from database?`)) return;
+    setUpdating(true);
+    try {
+      const s = supabase();
+      await s.from("order_files").delete().eq("order_id", orderId);
+      await s.from("status_history").delete().eq("order_id", orderId);
+      const { error } = await s.from("orders").delete().eq("id", orderId);
+      if (error) throw error;
+
+      setSelectedOrder(null);
+      await fetchOrders(false);
+      alert(`✅ Order #${orderNumber} deleted.`);
+    } catch (err) {
+      alert("Delete failed: " + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  // ==========================================
+  // DATABASE CLEAN-UP / CLEAR ALL ACTIONS
+  // ==========================================
+  async function handleClearAllOrders() {
+    if (clearConfirmText !== "CLEAR ALL") {
+      alert("Please type 'CLEAR ALL' exactly in uppercase to confirm wiping all orders.");
+      return;
+    }
+
+    setDbActionLoading(true);
+    try {
+      const s = supabase();
+      await s.from("order_files").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await s.from("status_history").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error } = await s.from("orders").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+
+      playNotificationChime("success");
+      setShowDbToolsModal(false);
+      setClearConfirmText("");
+      setSelectedOrder(null);
+      setSelectedOrderIds([]);
+      await fetchOrders(false);
+      alert("✅ All orders, documents, and logs have been completely cleared!");
+    } catch (err) {
+      alert("Failed to clear orders: " + err.message);
+    } finally {
+      setDbActionLoading(false);
+    }
+  }
+
+  async function handleClearDeliveredOrdersOnly() {
+    if (!window.confirm("Purge all DELIVERED (fulfilled) orders from the database to clean up storage?")) return;
+    setDbActionLoading(true);
+    try {
+      const s = supabase();
+      const deliveredIds = orders.filter((o) => o.status === "DELIVERED").map((o) => o.id);
+      if (deliveredIds.length === 0) {
+        alert("No delivered orders to clear.");
+        setDbActionLoading(false);
+        return;
+      }
+      await s.from("order_files").delete().in("order_id", deliveredIds);
+      await s.from("status_history").delete().in("order_id", deliveredIds);
+      const { error } = await s.from("orders").delete().in("id", deliveredIds);
+      if (error) throw error;
+
+      setShowDbToolsModal(false);
+      await fetchOrders(false);
+      alert(`✅ Cleaned up ${deliveredIds.length} delivered order(s).`);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setDbActionLoading(false);
+    }
+  }
+
+  async function handleClearCancelledOrdersOnly() {
+    if (!window.confirm("Purge all CANCELLED orders from the database?")) return;
+    setDbActionLoading(true);
+    try {
+      const s = supabase();
+      const cancelledIds = orders.filter((o) => o.status === "CANCELLED").map((o) => o.id);
+      if (cancelledIds.length === 0) {
+        alert("No cancelled orders to clear.");
+        setDbActionLoading(false);
+        return;
+      }
+      await s.from("order_files").delete().in("order_id", cancelledIds);
+      await s.from("status_history").delete().in("order_id", cancelledIds);
+      const { error } = await s.from("orders").delete().in("id", cancelledIds);
+      if (error) throw error;
+
+      setShowDbToolsModal(false);
+      await fetchOrders(false);
+      alert(`✅ Cleaned up ${cancelledIds.length} cancelled order(s).`);
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setDbActionLoading(false);
+    }
+  }
+
+  async function handleDownloadDocument(storagePath, filename) {
     try {
       const s = supabase();
       const { data, error } = await s.storage.from("documents").download(storagePath);
-      if (error) {
-        const { data: pub } = s.storage.from("documents").getPublicUrl(storagePath);
-        if (pub?.publicUrl) window.open(pub.publicUrl, "_blank");
-        return;
-      }
-      const blobUrl = URL.createObjectURL(data);
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
       const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = originalName || "print-document";
+      a.href = url;
+      a.download = filename || "document.pdf";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch (e) {
-      alert("Could not download file: " + e.message);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Download error: " + err.message);
     }
   }
 
@@ -498,10 +709,30 @@ export default function AdminDashboard() {
     }
   }
 
-  // Filter & Sort Orders
-  const filteredOrders = useMemo(() => {
+  // ==========================================
+  // FILTER & SORT ORDERS (Clean human logic)
+  // ==========================================
+  const displayedOrders = useMemo(() => {
     let result = [...orders];
 
+    // Sub-Tab Filter:
+    if (adminTab === "active_orders") {
+      // Show ONLY undelivered active orders
+      result = result.filter((o) => UNDELIVERED_STATUSES.includes(o.status));
+    } else if (adminTab === "delivered_orders") {
+      // Show ONLY delivered orders
+      result = result.filter((o) => o.status === "DELIVERED");
+    } else if (adminTab === "cancelled_orders") {
+      // Show ONLY cancelled orders
+      result = result.filter((o) => o.status === "CANCELLED");
+    }
+
+    // Status Dropdown Filter (when in "all_orders" tab)
+    if (adminTab === "all_orders" && statusFilter !== "ALL") {
+      result = result.filter((o) => o.status === statusFilter);
+    }
+
+    // Text Search
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -516,32 +747,61 @@ export default function AdminDashboard() {
       );
     }
 
-    if (statusFilter !== "ALL") {
-      result = result.filter((o) => o.status === statusFilter);
-    }
-
-    result = result.map((o) => ({
-      ...o,
-      aiPriority: calculateOrderPriority(o),
-    }));
-
-    if (sortBy === "AI_PRIORITY") {
-      result.sort((a, b) => b.aiPriority.score - a.aiPriority.score);
-    } else if (sortBy === "NEWEST") {
+    // Standard Sorting
+    if (sortBy === "NEWEST") {
       result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    } else if (sortBy === "VALUE") {
+    } else if (sortBy === "OLDEST") {
+      result.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    } else if (sortBy === "VALUE_HIGH") {
       result.sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
-    } else if (sortBy === "PAGES") {
+    } else if (sortBy === "VALUE_LOW") {
+      result.sort((a, b) => Number(a.total || 0) - Number(b.total || 0));
+    } else if (sortBy === "MOST_PAGES") {
+      result.sort((a, b) => Number(b.page_count || 1) - Number(a.page_count || 1));
+    } else if (sortBy === "FEWEST_PAGES") {
       result.sort((a, b) => Number(a.page_count || 1) - Number(b.page_count || 1));
     }
 
     return result;
-  }, [orders, search, statusFilter, sortBy]);
+  }, [orders, adminTab, search, statusFilter, sortBy]);
+
+  // Order Metrics Breakdown
+  const undeliveredCount = useMemo(
+    () => orders.filter((o) => UNDELIVERED_STATUSES.includes(o.status)).length,
+    [orders]
+  );
+  const deliveredCount = useMemo(
+    () => orders.filter((o) => o.status === "DELIVERED").length,
+    [orders]
+  );
+  const cancelledCount = useMemo(
+    () => orders.filter((o) => o.status === "CANCELLED").length,
+    [orders]
+  );
+  const pendingPaymentCount = useMemo(
+    () => orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length,
+    [orders]
+  );
+  const inPrintingCount = useMemo(
+    () => orders.filter((o) => o.status === "PRINTING").length,
+    [orders]
+  );
+  const readyCount = useMemo(
+    () => orders.filter((o) => o.status === "READY" || o.status === "OUT_FOR_DELIVERY").length,
+    [orders]
+  );
+  const totalRevenue = useMemo(
+    () => orders.filter((o) => o.status !== "CANCELLED").reduce((acc, curr) => acc + Number(curr.total || 0), 0),
+    [orders]
+  );
+  const activePagesCount = useMemo(
+    () => orders.filter((o) => UNDELIVERED_STATUSES.includes(o.status)).reduce((acc, curr) => acc + Number(curr.page_count || 1) * Number(curr.copies || 1), 0),
+    [orders]
+  );
 
   // Filter Action Logs
   const filteredActionLogs = useMemo(() => {
     let result = [...actionLogs];
-
     if (actionFilter === "ORDER") {
       result = result.filter((a) => a.actionType === "ORDER_PLACED" || a.actionType === "ORDER_CANCELLED");
     } else if (actionFilter === "PAYMENT") {
@@ -564,15 +824,12 @@ export default function AdminDashboard() {
           a.pageUrl?.toLowerCase().includes(q)
       );
     }
-
     return result;
   }, [actionLogs, actionFilter, actionSearch]);
 
-  // Combined Hybrid Live Active Users from Realtime Presence + Active Telemetry Logs
+  // Combined Hybrid Live Active Users
   const activeLiveUsers = useMemo(() => {
     const userMap = new Map();
-
-    // 1. Add Realtime Presence state users
     liveUsers.forEach((u) => {
       const key = u.sessionId || u.presenceKey || "anon";
       userMap.set(key, {
@@ -587,7 +844,6 @@ export default function AdminDashboard() {
       });
     });
 
-    // 2. Add recent visitors from telemetry action logs (active in last 5 minutes)
     const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
     actionLogs.forEach((act) => {
       const actTime = act.timestamp ? new Date(act.timestamp).getTime() : 0;
@@ -605,46 +861,12 @@ export default function AdminDashboard() {
             onlineAt: act.timestamp || new Date().toISOString(),
             lastActiveAt: act.timestamp || new Date().toISOString(),
           });
-        } else {
-          if (act.pageUrl && act.pageUrl !== existing.currentPath) {
-            existing.currentPath = act.pageUrl;
-          }
-          if (act.userName && act.userName !== "Guest Visitor" && act.userName !== "Guest Customer") {
-            existing.name = act.userName;
-          }
-          if (act.userPhone && !existing.phone) {
-            existing.phone = act.userPhone;
-          }
         }
       }
     });
 
     return Array.from(userMap.values());
   }, [liveUsers, actionLogs]);
-
-  // Order Metrics
-  const pendingPaymentCount = useMemo(
-    () => orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length,
-    [orders]
-  );
-  const inProgressCount = useMemo(
-    () => orders.filter((o) => ["PRINTING", "QUALITY_CHECK", "READY", "OUT_FOR_DELIVERY"].includes(o.status)).length,
-    [orders]
-  );
-  const totalRevenue = useMemo(
-    () => orders.filter((o) => o.status !== "CANCELLED").reduce((acc, curr) => acc + Number(curr.total || 0), 0),
-    [orders]
-  );
-
-  // Check if selected order has an issue / refund ticket reported
-  const hasIssueReport = useMemo(() => {
-    if (!selectedOrder?.status_history) return false;
-    return selectedOrder.status_history.some(
-      (h) =>
-        h.status === "CANCELLED" ||
-        (h.message && /refund|replacement|defect|wrong|misprint|damage|issue/i.test(h.message))
-    );
-  }, [selectedOrder]);
 
   if (loading) {
     return (
@@ -674,24 +896,47 @@ export default function AdminDashboard() {
     );
   }
 
+  const isAllVisibleSelected = displayedOrders.length > 0 && displayedOrders.every((o) => selectedOrderIds.includes(o.id));
+
   return (
     <main className="wrap">
-      {/* Admin Top Header */}
+      {/* Top Header & Fast Navigation */}
       <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 16 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -0.5 }}>Admin Operations Command Center</h1>
+            <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>
+              Shop Operations Command Center
+            </h1>
             <span className="admin-nav-badge">
               <ShieldCheck size={15} />
               <span>LIVE ADMIN</span>
             </span>
           </div>
-          <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
-            Real-time live user presence, action telemetry stream, print document queue, and payment approvals
+          <p style={{ color: "var(--text-muted)", fontSize: 13.5, marginTop: 4, margin: "4px 0 0" }}>
+            Dhruvang Crazy Printing Center • High-Speed Production & Delivery Queue
           </p>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Database Tools & Clear Orders Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowDbToolsModal(true)}
+            className="btn btn-sm"
+            style={{
+              background: "#fee2e2",
+              color: "#991b1b",
+              border: "1px solid #fca5a5",
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6
+            }}
+          >
+            <Trash2 size={14} />
+            <span>Database & Clear Tools</span>
+          </button>
+
           {/* Live Online Users Presence Pill */}
           <button
             onClick={() => setAdminTab("live_users")}
@@ -706,8 +951,7 @@ export default function AdminDashboard() {
               fontSize: 13,
               fontWeight: 800,
               border: `1px solid ${activeLiveUsers.length > 0 ? "#a7f3d0" : "var(--border)"}`,
-              cursor: "pointer",
-              transition: "all 0.2s ease"
+              cursor: "pointer"
             }}
           >
             <span style={{
@@ -715,10 +959,9 @@ export default function AdminDashboard() {
               height: 8,
               borderRadius: "50%",
               background: activeLiveUsers.length > 0 ? "#10b981" : "#94a3b8",
-              boxShadow: activeLiveUsers.length > 0 ? "0 0 10px #10b981" : "none",
-              animation: activeLiveUsers.length > 0 ? "pulseGlow 1.5s infinite" : "none"
+              boxShadow: activeLiveUsers.length > 0 ? "0 0 10px #10b981" : "none"
             }} />
-            <span>{activeLiveUsers.length} {activeLiveUsers.length === 1 ? "User" : "Users"} Online Now</span>
+            <span>{activeLiveUsers.length} Online</span>
           </button>
 
           {/* Sound Toggle */}
@@ -726,11 +969,12 @@ export default function AdminDashboard() {
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="btn btn-secondary btn-sm"
             style={{ padding: "6px 10px" }}
-            title={soundEnabled ? "Mute live action audio chimes" : "Enable live action audio chimes"}
+            title={soundEnabled ? "Mute audio chimes" : "Enable audio chimes"}
           >
             {soundEnabled ? <Volume2 size={15} color="#10b981" /> : <VolumeX size={15} color="#94a3b8" />}
           </button>
 
+          {/* Refresh Button */}
           <button 
             onClick={() => {
               fetchOrders(false);
@@ -739,7 +983,6 @@ export default function AdminDashboard() {
             disabled={refreshing} 
             className="btn btn-secondary btn-sm"
             style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            title="Refresh order queue and action feed"
           >
             <RefreshCw size={14} className={refreshing ? "spin-animation" : ""} />
             <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
@@ -747,17 +990,61 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Main Admin Navigation Tabs */}
+      {/* Production & Financial Stats Bar */}
+      <div className="stats-grid no-print" style={{ marginBottom: 20 }}>
+        <div className="stat-card" style={{ borderLeft: "4px solid #4f46e5" }}>
+          <div className="stat-icon" style={{ background: "#eef2ff", color: "#4f46e5" }}>
+            <Printer size={22} />
+          </div>
+          <div>
+            <div className="stat-value">{undeliveredCount}</div>
+            <div className="stat-label">Active Undelivered Jobs</div>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: "4px solid #eab308" }}>
+          <div className="stat-icon" style={{ background: "#fef9c3", color: "#ca8a04" }}>
+            <Clock size={22} />
+          </div>
+          <div>
+            <div className="stat-value">{pendingPaymentCount}</div>
+            <div className="stat-label">Pending Verification</div>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: "4px solid #06b6d4" }}>
+          <div className="stat-icon" style={{ background: "#ecfeff", color: "#0891b2" }}>
+            <Layers size={22} />
+          </div>
+          <div>
+            <div className="stat-value">{activePagesCount}</div>
+            <div className="stat-label">Active Sheets to Print</div>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: "4px solid #16a34a" }}>
+          <div className="stat-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>
+            <IndianRupee size={22} />
+          </div>
+          <div>
+            <div className="stat-value">₹{totalRevenue}</div>
+            <div className="stat-label">Total Store Revenue</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Admin Navigation Sub-Tabs */}
       <div className="no-print" style={{
         display: "flex",
         gap: 8,
         borderBottom: "2px solid var(--border)",
-        marginBottom: 24,
+        marginBottom: 20,
         overflowX: "auto",
-        paddingBottom: 2
+        paddingBottom: 4
       }}>
+        {/* Tab 1: Active Undelivered Orders (Default) */}
         <button
-          onClick={() => setAdminTab("orders")}
+          onClick={() => { setAdminTab("active_orders"); setSelectedOrderIds([]); }}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -765,30 +1052,121 @@ export default function AdminDashboard() {
             padding: "10px 18px",
             border: "none",
             background: "none",
-            borderBottom: adminTab === "orders" ? "3px solid var(--primary)" : "3px solid transparent",
-            color: adminTab === "orders" ? "var(--primary)" : "var(--text-muted)",
-            fontWeight: adminTab === "orders" ? 800 : 600,
-            fontSize: 14,
+            borderBottom: adminTab === "active_orders" ? "3px solid var(--primary)" : "3px solid transparent",
+            color: adminTab === "active_orders" ? "var(--primary)" : "var(--text-muted)",
+            fontWeight: adminTab === "active_orders" ? 900 : 600,
+            fontSize: 14.5,
             cursor: "pointer",
-            marginBottom: -2,
-            transition: "all 0.2s ease",
+            marginBottom: -6,
             whiteSpace: "nowrap"
           }}
         >
-          <ShoppingBag size={18} />
-          <span>Print Orders & Queue</span>
+          <Zap size={18} color={adminTab === "active_orders" ? "var(--primary)" : "currentColor"} />
+          <span>⚡ Active Undelivered Queue</span>
           <span style={{
-            background: adminTab === "orders" ? "var(--primary-light)" : "#f1f5f9",
-            color: adminTab === "orders" ? "var(--primary)" : "var(--text-muted)",
+            background: undeliveredCount > 0 ? "var(--primary)" : "#f1f5f9",
+            color: undeliveredCount > 0 ? "white" : "var(--text-muted)",
             fontSize: 11,
-            fontWeight: 800,
+            fontWeight: 900,
             padding: "2px 8px",
             borderRadius: 999
           }}>
-            {orders.length}
+            {undeliveredCount} ACTIVE
           </span>
         </button>
 
+        {/* Tab 2: Delivered Archive */}
+        <button
+          onClick={() => { setAdminTab("delivered_orders"); setSelectedOrderIds([]); }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "delivered_orders" ? "3px solid #16a34a" : "3px solid transparent",
+            color: adminTab === "delivered_orders" ? "#16a34a" : "var(--text-muted)",
+            fontWeight: adminTab === "delivered_orders" ? 900 : 600,
+            fontSize: 14.5,
+            cursor: "pointer",
+            marginBottom: -6,
+            whiteSpace: "nowrap"
+          }}
+        >
+          <Package size={18} color={adminTab === "delivered_orders" ? "#16a34a" : "currentColor"} />
+          <span>📦 Delivered Archive</span>
+          <span style={{
+            background: "#f0fdf4",
+            color: "#166534",
+            fontSize: 11,
+            fontWeight: 800,
+            padding: "2px 8px",
+            borderRadius: 999,
+            border: "1px solid #bbf7d0"
+          }}>
+            {deliveredCount}
+          </span>
+        </button>
+
+        {/* Tab 3: Cancelled */}
+        <button
+          onClick={() => { setAdminTab("cancelled_orders"); setSelectedOrderIds([]); }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "cancelled_orders" ? "3px solid #ef4444" : "3px solid transparent",
+            color: adminTab === "cancelled_orders" ? "#dc2626" : "var(--text-muted)",
+            fontWeight: adminTab === "cancelled_orders" ? 900 : 600,
+            fontSize: 14.5,
+            cursor: "pointer",
+            marginBottom: -6,
+            whiteSpace: "nowrap"
+          }}
+        >
+          <XCircle size={18} color={adminTab === "cancelled_orders" ? "#dc2626" : "currentColor"} />
+          <span>❌ Cancelled</span>
+          <span style={{
+            background: "#fef2f2",
+            color: "#991b1b",
+            fontSize: 11,
+            fontWeight: 800,
+            padding: "2px 8px",
+            borderRadius: 999,
+            border: "1px solid #fecaca"
+          }}>
+            {cancelledCount}
+          </span>
+        </button>
+
+        {/* Tab 4: All Orders */}
+        <button
+          onClick={() => { setAdminTab("all_orders"); setSelectedOrderIds([]); }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 18px",
+            border: "none",
+            background: "none",
+            borderBottom: adminTab === "all_orders" ? "3px solid #64748b" : "3px solid transparent",
+            color: adminTab === "all_orders" ? "#334155" : "var(--text-muted)",
+            fontWeight: adminTab === "all_orders" ? 900 : 600,
+            fontSize: 14.5,
+            cursor: "pointer",
+            marginBottom: -6,
+            whiteSpace: "nowrap"
+          }}
+        >
+          <Layers size={18} color={adminTab === "all_orders" ? "#334155" : "currentColor"} />
+          <span>📋 All Master Orders ({orders.length})</span>
+        </button>
+
+        {/* Tab 5: Live Active Users */}
         <button
           onClick={() => setAdminTab("live_users")}
           style={{
@@ -798,34 +1176,20 @@ export default function AdminDashboard() {
             padding: "10px 18px",
             border: "none",
             background: "none",
-            borderBottom: adminTab === "live_users" ? "3px solid #10b981" : "3px solid transparent",
-            color: adminTab === "live_users" ? "#059669" : "var(--text-muted)",
-            fontWeight: adminTab === "live_users" ? 800 : 600,
-            fontSize: 14,
+            borderBottom: adminTab === "live_users" ? "3px solid #0891b2" : "3px solid transparent",
+            color: adminTab === "live_users" ? "#0891b2" : "var(--text-muted)",
+            fontWeight: adminTab === "live_users" ? 900 : 600,
+            fontSize: 14.5,
             cursor: "pointer",
-            marginBottom: -2,
-            transition: "all 0.2s ease",
+            marginBottom: -6,
             whiteSpace: "nowrap"
           }}
         >
-          <Users size={18} color={adminTab === "live_users" ? "#10b981" : "currentColor"} />
-          <span>Live Active Users</span>
-          <span style={{
-            background: activeLiveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
-            color: activeLiveUsers.length > 0 ? "#059669" : "var(--text-muted)",
-            fontSize: 11,
-            fontWeight: 900,
-            padding: "2px 8px",
-            borderRadius: 999,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-            {activeLiveUsers.length} ONLINE
-          </span>
+          <Users size={18} color={adminTab === "live_users" ? "#0891b2" : "currentColor"} />
+          <span>Live Users Radar ({activeLiveUsers.length})</span>
         </button>
 
+        {/* Tab 6: Action Stream */}
         <button
           onClick={() => setAdminTab("actions_stream")}
           style={{
@@ -835,46 +1199,458 @@ export default function AdminDashboard() {
             padding: "10px 18px",
             border: "none",
             background: "none",
-            borderBottom: adminTab === "actions_stream" ? "3px solid #06b6d4" : "3px solid transparent",
-            color: adminTab === "actions_stream" ? "#0891b2" : "var(--text-muted)",
-            fontWeight: adminTab === "actions_stream" ? 800 : 600,
-            fontSize: 14,
+            borderBottom: adminTab === "actions_stream" ? "3px solid #8b5cf6" : "3px solid transparent",
+            color: adminTab === "actions_stream" ? "#7c3aed" : "var(--text-muted)",
+            fontWeight: adminTab === "actions_stream" ? 900 : 600,
+            fontSize: 14.5,
             cursor: "pointer",
-            marginBottom: -2,
-            transition: "all 0.2s ease",
+            marginBottom: -6,
             whiteSpace: "nowrap"
           }}
         >
-          <Activity size={18} color={adminTab === "actions_stream" ? "#06b6d4" : "currentColor"} />
-          <span>Real-Time Action Stream</span>
-          {newActionFlash && (
-            <span style={{
-              background: "#06b6d4",
-              color: "white",
-              fontSize: 10,
-              fontWeight: 900,
-              padding: "2px 6px",
-              borderRadius: 999,
-              animation: "pulseGlow 1s infinite"
-            }}>
-              LIVE PING
-            </span>
-          )}
+          <Activity size={18} color={adminTab === "actions_stream" ? "#7c3aed" : "currentColor"} />
+          <span>Action Stream</span>
         </button>
       </div>
 
       {/* ========================================================= */}
-      {/* TAB 1: LIVE ACTIVE USERS PRESENCE MONITOR */}
+      {/* ORDERS SECTION (Tabs: active_orders, delivered_orders, cancelled_orders, all_orders) */}
+      {/* ========================================================= */}
+      {["active_orders", "delivered_orders", "cancelled_orders", "all_orders"].includes(adminTab) && (
+        <div className="fast-pop-anim">
+          {/* Search & Sort Toolbar */}
+          <div className="card no-print" style={{ marginBottom: 18, padding: "14px 18px" }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+              {/* Search Bar */}
+              <div style={{ position: "relative", minWidth: 260, flex: 1 }}>
+                <Search size={16} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+                <input
+                  type="text"
+                  placeholder="Search by order #, customer name, mobile, 12-digit UTR, Boisar address..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    paddingLeft: 36,
+                    paddingRight: 12,
+                    paddingTop: 8,
+                    paddingBottom: 8,
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: 13.5,
+                  }}
+                />
+              </div>
+
+              {/* Sorting Filter */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)" }}>Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "var(--primary)",
+                    background: "var(--primary-light)",
+                  }}
+                >
+                  {SORT_OPTIONS.map((so) => (
+                    <option key={so.key} value={so.key}>
+                      {so.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter (Only active in "all_orders" tab) */}
+              {adminTab === "all_orders" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Filter size={15} color="var(--text-muted)" />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{
+                      padding: "8px 12px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-md)",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "var(--text-main)",
+                      background: "white",
+                    }}
+                  >
+                    {STATUS_LIST.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Bulk Multi-Action Floating Bar */}
+          {selectedOrderIds.length > 0 && (
+            <div 
+              style={{
+                background: "#1e1b4b",
+                color: "white",
+                padding: "12px 20px",
+                borderRadius: "var(--radius-md)",
+                marginBottom: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 12,
+                boxShadow: "0 10px 25px -5px rgba(30, 27, 75, 0.4)",
+                animation: "fastPopIn 0.2s ease"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ background: "var(--primary)", color: "white", fontSize: 12, fontWeight: 900, padding: "3px 10px", borderRadius: 999 }}>
+                  {selectedOrderIds.length} Selected
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Bulk Batch Actions:</span>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => handleBulkStatusChange("PRINTING")}
+                  disabled={updating}
+                  className="btn btn-sm"
+                  style={{ background: "#4f46e5", color: "white", fontSize: 12, fontWeight: 800 }}
+                >
+                  <Printer size={13} />
+                  <span>Start Printing</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBulkStatusChange("READY")}
+                  disabled={updating}
+                  className="btn btn-sm"
+                  style={{ background: "#0284c7", color: "white", fontSize: 12, fontWeight: 800 }}
+                >
+                  <CheckCircle2 size={13} />
+                  <span>Mark Ready</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBulkStatusChange("DELIVERED")}
+                  disabled={updating}
+                  className="btn btn-sm"
+                  style={{ background: "#16a34a", color: "white", fontSize: 12, fontWeight: 800 }}
+                >
+                  <Package size={13} />
+                  <span>Mark Delivered</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteOrders}
+                  disabled={updating}
+                  className="btn btn-sm"
+                  style={{ background: "#dc2626", color: "white", fontSize: 12, fontWeight: 800 }}
+                >
+                  <Trash2 size={13} />
+                  <span>Delete Selected</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderIds([])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: 12 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Orders Table */}
+          <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="table-container" style={{ border: "none" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 40, textAlign: "center" }}>
+                      <button
+                        type="button"
+                        onClick={handleSelectAllVisible}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)" }}
+                        title="Select/Deselect All Visible"
+                      >
+                        {isAllVisibleSelected ? <CheckSquare size={17} color="var(--primary)" /> : <Square size={17} color="#94a3b8" />}
+                      </button>
+                    </th>
+                    <th>Order Ref</th>
+                    <th>Customer &amp; Contact</th>
+                    <th>Print Documents</th>
+                    <th>Payment &amp; UTR</th>
+                    <th>Job Specs</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>
+                          {adminTab === "active_orders" ? "🎉 No Pending Undelivered Orders!" : "No orders found in this view."}
+                        </div>
+                        <p style={{ fontSize: 13, marginTop: 4 }}>
+                          {adminTab === "active_orders" 
+                            ? "All received orders have been printed and delivered. New incoming customer orders will appear here in real-time." 
+                            : "Try adjusting your search query or filter tab."}
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    displayedOrders.map((o) => {
+                      const isSelected = selectedOrderIds.includes(o.id);
+                      const fileCount = o.order_files ? o.order_files.length : 0;
+                      const isPayAtStore = Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE"));
+
+                      return (
+                        <tr 
+                          key={o.id}
+                          style={{
+                            background: isSelected ? "#f5f3ff" : "inherit",
+                            borderLeft: o.priority === "EXPRESS" ? "4px solid #f59e0b" : "none"
+                          }}
+                        >
+                          {/* Multi-Select Checkbox */}
+                          <td style={{ textAlign: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSelect(o.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)" }}
+                            >
+                              {isSelected ? <CheckSquare size={16} color="var(--primary)" /> : <Square size={16} color="#cbd5e1" />}
+                            </button>
+                          </td>
+
+                          {/* Order Number & Timestamp */}
+                          <td style={{ fontWeight: 800, fontFamily: "monospace" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span>{o.order_number}</span>
+                              {o.priority === "EXPRESS" && (
+                                <span style={{ background: "#fef3c7", color: "#b45309", fontSize: 9.5, fontWeight: 900, padding: "1px 5px", borderRadius: 3 }}>
+                                  ⚡ RUSH
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, fontFamily: "sans-serif" }}>
+                              <FormattedDate date={o.created_at} />
+                            </div>
+                          </td>
+
+                          {/* Customer Name & Phone */}
+                          <td>
+                            <div style={{ fontWeight: 800 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                              <span>📞 {o.customer_phone || o.profiles?.phone || "N/A"}</span>
+                            </div>
+                          </td>
+
+                          {/* Documents Preview & Download */}
+                          <td>
+                            {fileCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrder(o)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: 12, padding: "4px 8px", background: "#eef2ff", color: "var(--primary)", borderColor: "#c7d2fe" }}
+                              >
+                                <FileText size={13} />
+                                <span>{fileCount} {fileCount === 1 ? "file" : "files"}</span>
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 12, color: "var(--text-light)" }}>No files</span>
+                            )}
+                          </td>
+
+                          {/* Payment & UTR */}
+                          <td>
+                            {o.status === "PAYMENT_VERIFIED" ? (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#ecfdf5", color: "#166534", fontSize: 11, fontWeight: 800, padding: "2px 7px", borderRadius: 4, border: "1px solid #a7f3d0" }}>
+                                <CheckCircle2 size={12} />
+                                <span>PAID &amp; VERIFIED</span>
+                              </div>
+                            ) : isPayAtStore ? (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#f0f9ff", color: "#0369a1", fontSize: 11, fontWeight: 800, padding: "2px 7px", borderRadius: 4, border: "1px solid #bae6fd" }}>
+                                <Store size={12} />
+                                <span>Pay at Store</span>
+                              </div>
+                            ) : o.upi_utr ? (
+                              <div style={{ fontSize: 11.5 }}>
+                                <div style={{ fontWeight: 800, color: "#854d0e" }}>💳 UTR: {o.upi_utr}</div>
+                                {o.payment_proof_path && <span style={{ color: "#16a34a", fontSize: 10.5, fontWeight: 700 }}>✓ Proof Attached</span>}
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: 11, color: "#dc2626", fontWeight: 700 }}>❌ UNPAID</span>
+                            )}
+                          </td>
+
+                          {/* Job Specs */}
+                          <td style={{ fontSize: 12 }}>
+                            <div><b>{o.paper_size}</b> • {o.color_mode === "COLOR" ? "Color" : "B&W"}</div>
+                            <div style={{ color: "var(--text-muted)" }}>
+                              {o.page_count || 1} pg(s) × {o.copies || 1} copy • {o.delivery_mode === "DELIVERY" ? "🚚 Boisar" : "🏪 Pickup"}
+                            </div>
+                          </td>
+
+                          {/* Total Price */}
+                          <td style={{ fontWeight: 900, color: "var(--primary)", fontSize: 15 }}>
+                            ₹{o.total}.00
+                          </td>
+
+                          {/* Order Status Badge */}
+                          <td>
+                            <span className={`status-badge status-${o.status}`}>
+                              {o.status?.replaceAll("_", " ")}
+                            </span>
+                          </td>
+
+                          {/* Quick 1-Click Operations */}
+                          <td>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              {/* Open Details Drawer */}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrder(o)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "5px 9px", fontSize: 12 }}
+                                title="Open Full Order Details & Files"
+                              >
+                                <Eye size={13} />
+                                <span>Manage</span>
+                              </button>
+
+                              {/* Print Job Slip Ticket */}
+                              <button
+                                type="button"
+                                onClick={() => setJobSlipOrder(o)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "5px 8px", fontSize: 12 }}
+                                title="Print Shop Job Ticket / Bag Slip"
+                              >
+                                <Printer size={13} />
+                              </button>
+
+                              {/* Direct WhatsApp Customer */}
+                              <a
+                                href={buildWhatsAppLink(o.customer_phone, `Hello ${o.customer_name || "Customer"}, update for Order #${o.order_number}: Status is now ${o.status?.replaceAll("_", " ")}.`)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: "5px 8px", color: "#16a34a" }}
+                                title="WhatsApp Customer"
+                              >
+                                <MessageCircle size={13} />
+                              </a>
+
+                              {/* 1-Click Next Step Action */}
+                              {o.status === "ORDER_RECEIVED" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(o.id, "PAYMENT_VERIFIED")}
+                                  disabled={updating}
+                                  className="btn btn-sm"
+                                  style={{ background: "#16a34a", color: "white", padding: "5px 8px", fontSize: 11.5, fontWeight: 800 }}
+                                  title="Confirm & Verify Payment"
+                                >
+                                  ✓ Verify Paid
+                                </button>
+                              )}
+
+                              {o.status === "PAYMENT_SUBMITTED" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(o.id, "PAYMENT_VERIFIED")}
+                                  disabled={updating}
+                                  className="btn btn-sm"
+                                  style={{ background: "#16a34a", color: "white", padding: "5px 8px", fontSize: 11.5, fontWeight: 800 }}
+                                  title="Approve & Verify UTR Payment"
+                                >
+                                  ✓ Approve UTR
+                                </button>
+                              )}
+
+                              {o.status === "PAYMENT_VERIFIED" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(o.id, "PRINTING")}
+                                  disabled={updating}
+                                  className="btn btn-sm"
+                                  style={{ background: "#4f46e5", color: "white", padding: "5px 8px", fontSize: 11.5, fontWeight: 800 }}
+                                  title="Send to Printer"
+                                >
+                                  🖨️ Print
+                                </button>
+                              )}
+
+                              {o.status === "PRINTING" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(o.id, "READY")}
+                                  disabled={updating}
+                                  className="btn btn-sm"
+                                  style={{ background: "#0284c7", color: "white", padding: "5px 8px", fontSize: 11.5, fontWeight: 800 }}
+                                  title="Mark Ready for Pickup"
+                                >
+                                  🎉 Mark Ready
+                                </button>
+                              )}
+
+                              {(o.status === "READY" || o.status === "OUT_FOR_DELIVERY") && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(o.id, "DELIVERED")}
+                                  disabled={updating}
+                                  className="btn btn-sm"
+                                  style={{ background: "#059669", color: "white", padding: "5px 8px", fontSize: 11.5, fontWeight: 800 }}
+                                  title="Mark Delivered (Removes from active queue & archives)"
+                                >
+                                  ✅ Deliver
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: LIVE ACTIVE USERS RADAR */}
       {/* ========================================================= */}
       {adminTab === "live_users" && (
         <div className="fast-pop-anim">
-          <div className="card" style={{ marginBottom: 24, padding: "20px 24px", background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)", borderColor: "#a7f3d0" }}>
+          <div className="card" style={{ marginBottom: 20, padding: "18px 22px", background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)", borderColor: "#a7f3d0" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 12px #10b981" }} />
                   <h2 style={{ fontSize: 18, fontWeight: 900, color: "#065f46", margin: 0 }}>
-                    Real-Time Customer Presence Radar ({activeLiveUsers.length} Active)
+                    Real-Time Customer Presence Radar ({activeLiveUsers.length} Online)
                   </h2>
                 </div>
                 <p style={{ fontSize: 13, color: "#047857", margin: 0 }}>
@@ -903,8 +1679,7 @@ export default function AdminDashboard() {
                     flexDirection: "column",
                     justifyContent: "space-between",
                     gap: 12,
-                    cursor: "pointer",
-                    transition: "transform 0.2s, box-shadow 0.2s"
+                    cursor: "pointer"
                   }}
                   onClick={() => setSelectedUserInspect(u)}
                 >
@@ -914,22 +1689,19 @@ export default function AdminDashboard() {
                         {(u.name || "G")[0]}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--text-main)" }}>
-                          {u.name || "Guest Customer"}
-                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 14.5 }}>{u.name || "Guest Customer"}</div>
                         {u.phone && <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>📞 {u.phone}</div>}
                       </div>
                     </div>
-
                     <span style={{ fontSize: 11, background: "#ecfdf5", color: "#065f46", fontWeight: 900, padding: "3px 8px", borderRadius: 999, border: "1px solid #a7f3d0" }}>
-                      ACTIVE
+                      ONLINE
                     </span>
                   </div>
 
                   <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: 8, fontSize: 12, border: "1px solid var(--border)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       <Compass size={13} color="var(--primary)" />
-                      <span><b>Current Route:</b> <code>{u.currentPath || "/"}</code></span>
+                      <span><b>Route:</b> <code>{u.currentPath || "/"}</code></span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-muted)" }}>
                       <Laptop size={13} />
@@ -949,24 +1721,22 @@ export default function AdminDashboard() {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 2: REAL-TIME ACTION STREAM & TELEMETRY */}
+      {/* TAB: REAL-TIME ACTION STREAM */}
       {/* ========================================================= */}
       {adminTab === "actions_stream" && (
         <div className="fast-pop-anim">
-          {/* Action Stream Controls */}
-          <div className="card" style={{ marginBottom: 20, padding: "16px 20px" }}>
+          <div className="card" style={{ marginBottom: 18, padding: "16px 20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Activity size={20} color="#06b6d4" />
                 <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>
-                  Live Action Stream & Telemetry Feed
+                  Live Action Stream &amp; Telemetry Feed
                 </h3>
                 <span style={{ background: "#ecfeff", color: "#0891b2", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid #a5f3fc" }}>
                   {filteredActionLogs.length} Actions
                 </span>
               </div>
 
-              {/* Search in actions */}
               <div style={{ position: "relative", minWidth: 240 }}>
                 <Search size={15} color="var(--text-muted)" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
                 <input
@@ -979,480 +1749,265 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Category Filter Pills */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {ACTION_CATEGORIES.map((cat) => {
-                const isSelected = actionFilter === cat.key;
-                return (
-                  <button
-                    key={cat.key}
-                    type="button"
-                    onClick={() => setActionFilter(cat.key)}
-                    style={{
-                      background: isSelected ? "var(--primary)" : "#f1f5f9",
-                      color: isSelected ? "white" : "var(--text-main)",
-                      border: "none",
-                      padding: "6px 12px",
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: isSelected ? 800 : 600,
-                      cursor: "pointer",
-                      transition: "all 0.15s ease"
-                    }}
-                  >
-                    {cat.label}
-                  </button>
-                );
-              })}
+              {ACTION_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setActionFilter(cat.key)}
+                  style={{
+                    background: actionFilter === cat.key ? "var(--primary)" : "#f1f5f9",
+                    color: actionFilter === cat.key ? "white" : "var(--text-main)",
+                    border: "none",
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: actionFilter === cat.key ? 800 : 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  {cat.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Action Log Items Feed */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filteredActionLogs.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
-                <Activity size={32} color="#cbd5e1" style={{ margin: "0 auto 8px" }} />
-                <div style={{ fontWeight: 700 }}>No user actions match this filter</div>
+              <div className="card" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
+                No telemetry actions recorded yet.
               </div>
             ) : (
-              filteredActionLogs.map((action, index) => {
-                let badgeColor = "#4f46e5";
-                let badgeBg = "#eef2ff";
-                let icon = <Activity size={15} />;
-
-                if (action.actionType === "ORDER_PLACED") {
-                  badgeColor = "#16a34a";
-                  badgeBg = "#f0fdf4";
-                  icon = <ShoppingBag size={15} />;
-                } else if (action.actionType === "PAYMENT_SUBMITTED") {
-                  badgeColor = "#0284c7";
-                  badgeBg = "#f0f9ff";
-                  icon = <IndianRupee size={15} />;
-                } else if (action.actionType === "DOC_UPLOAD") {
-                  badgeColor = "#7c3aed";
-                  badgeBg = "#faf5ff";
-                  icon = <FileText size={15} />;
-                } else if (action.actionType === "LOCATION_SELECT") {
-                  badgeColor = "#ea580c";
-                  badgeBg = "#fff7ed";
-                  icon = <MapPin size={15} />;
-                } else if (action.actionType === "ORDER_CANCELLED") {
-                  badgeColor = "#dc2626";
-                  badgeBg = "#fef2f2";
-                  icon = <XCircle size={15} />;
-                }
-
-                return (
-                  <div
-                    key={index}
-                    className="fast-pop-anim"
-                    style={{
-                      background: "white",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-md)",
-                      padding: "14px 18px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 12,
-                      boxShadow: "var(--shadow-sm)"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1, minWidth: 260 }}>
-                      <div style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: "50%",
-                        background: badgeBg,
-                        color: badgeColor,
-                        display: "grid",
-                        placeItems: "center",
-                        flexShrink: 0,
-                        border: `1px solid ${badgeColor}33`
-                      }}>
-                        {icon}
-                      </div>
-
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
-                          <span style={{ fontWeight: 800, fontSize: 14, color: "var(--text-main)" }}>
-                            {action.actionTitle}
-                          </span>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 900,
-                            background: badgeBg,
-                            color: badgeColor,
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            textTransform: "uppercase"
-                          }}>
-                            {action.actionType?.replaceAll("_", " ")}
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span>👤 <b>{action.userName || "Guest"}</b></span>
-                          {action.userPhone && <span>📞 {action.userPhone}</span>}
-                          <span>•</span>
-                          <span>🧭 <code>{action.pageUrl || "/"}</code></span>
-                          <span>•</span>
-                          <span>💻 {action.deviceInfo || "Device"}</span>
-                        </div>
-                      </div>
+              filteredActionLogs.map((action, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: "white",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "12px 16px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 12
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, color: "var(--text-main)", marginBottom: 2 }}>
+                      {action.actionTitle}
                     </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 11, color: "var(--text-light)", fontWeight: 600 }}>
-                        <FormattedDate date={action.timestamp || new Date().toISOString()} />
-                      </span>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      👤 <b>{action.userName || "Guest"}</b> {action.userPhone && `(📞 ${action.userPhone})`} • <code>{action.pageUrl || "/"}</code>
                     </div>
                   </div>
-                );
-              })
+                  <span style={{ fontSize: 11, color: "var(--text-light)" }}>
+                    <FormattedDate date={action.timestamp || new Date().toISOString()} />
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: STANDARD ORDER MANAGEMENT QUEUE */}
+      {/* DATABASE & MAINTENANCE MODAL */}
       {/* ========================================================= */}
-      {adminTab === "orders" && (
-        <div className="fast-pop-anim">
-          {/* KPI Summary Cards */}
-          <div className="stats-grid no-print">
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: "var(--primary-light)", color: "var(--primary)" }}>
-                <ShoppingBag size={24} />
-              </div>
-              <div>
-                <div className="stat-value">{orders.length}</div>
-                <div className="stat-label">Total Orders</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: "var(--warning-bg)", color: "var(--warning)" }}>
-                <Clock size={24} />
-              </div>
-              <div>
-                <div className="stat-value">{pendingPaymentCount}</div>
-                <div className="stat-label">Pending Review</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: "#ede9fe", color: "#6d28d9" }}>
-                <Printer size={24} />
-              </div>
-              <div>
-                <div className="stat-value">{inProgressCount}</div>
-                <div className="stat-label">In Production</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
-                <IndianRupee size={24} />
-              </div>
-              <div>
-                <div className="stat-value">₹{totalRevenue}</div>
-                <div className="stat-label">Store Revenue</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Search, Status & AI Sort Filters */}
-          <div className="card no-print" style={{ marginBottom: 24, padding: "18px 20px" }}>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ position: "relative", minWidth: 260, flex: 1 }}>
-                <Search size={17} color="var(--text-light)" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-                <input
-                  type="text"
-                  placeholder="Search by order #, recipient name, phone, UTR, address..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  style={{
-                    width: "100%",
-                    paddingLeft: 38,
-                    paddingRight: 14,
-                    paddingTop: 9,
-                    paddingBottom: 9,
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: 14,
-                  }}
-                />
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>Sort:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  style={{
-                    padding: "9px 12px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "var(--primary)",
-                    background: "var(--primary-light)",
-                  }}
-                >
-                  {SORT_OPTIONS.map((so) => (
-                    <option key={so.key} value={so.key}>
-                      {so.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Filter size={15} color="var(--text-muted)" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  style={{
-                    padding: "9px 14px",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    color: "var(--text-main)",
-                    background: "white",
-                  }}
-                >
-                  {STATUS_LIST.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Orders Table with Direct File & Payment SS Visuals */}
-          <div className="card no-print" style={{ padding: 0, overflow: "hidden" }}>
-            <div className="table-container" style={{ border: "none" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>AI Priority</th>
-                    <th>Order Number</th>
-                    <th>Recipient / Customer</th>
-                    <th>Print Documents</th>
-                    <th>Payment &amp; Proof</th>
-                    <th>Specs &amp; Delivery</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredOrders.length === 0 ? (
-                    <tr>
-                      <td colSpan="9" style={{ textAlign: "center", padding: 36, color: "var(--text-muted)" }}>
-                        No orders found matching your criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredOrders.map((o) => {
-                      const p = o.aiPriority;
-                      const fileCount = o.order_files ? o.order_files.length : 0;
-                      const hasProof = Boolean(o.payment_proof_path);
-
-                      return (
-                        <tr key={o.id}>
-                          <td>
-                            <span style={{
-                              fontSize: 11,
-                              fontWeight: 900,
-                              background: p?.urgency === "HIGH" ? "#fee2e2" : "#f1f5f9",
-                              color: p?.urgency === "HIGH" ? "#b91c1c" : "#475569",
-                              padding: "2px 6px",
-                              borderRadius: 4
-                            }}>
-                              {p?.score || 50} pts
-                            </span>
-                          </td>
-                          <td style={{ fontWeight: 800, fontFamily: "monospace" }}>
-                            <div>{o.order_number}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
-                              <FormattedDate date={o.created_at} />
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 700 }}>{o.customer_name || o.profiles?.name || "Customer"}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{o.customer_phone || o.profiles?.phone || "N/A"}</div>
-                          </td>
-                          {/* Uploaded Print Files */}
-                          <td>
-                            {fileCount > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedOrder(o)}
-                                className="btn btn-secondary btn-sm"
-                                style={{ fontSize: 12, padding: "4px 8px", background: "#eef2ff", color: "var(--primary)", borderColor: "#c7d2fe" }}
-                                title="Click to view & download print documents"
-                              >
-                                <FileText size={13} />
-                                <span><b>{fileCount}</b> {fileCount === 1 ? "File" : "Files"}</span>
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: 11.5, color: "var(--text-light)" }}>No files</span>
-                            )}
-                          </td>
-                          {/* Payment Screenshot & UTR */}
-                          <td>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                              {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedOrder(o)}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 5,
-                                    background: "#e0f2fe",
-                                    color: "#0369a1",
-                                    border: "1px solid #bae6fd",
-                                    borderRadius: 6,
-                                    padding: "3px 8px",
-                                    fontSize: 11.5,
-                                    fontWeight: 800,
-                                    cursor: "pointer",
-                                    width: "fit-content"
-                                  }}
-                                  title="Customer selected Pay at Store (Cash/Counter)"
-                                >
-                                  <span>🏪 Pay at Store</span>
-                                </button>
-                              ) : hasProof ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedOrder(o)}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 5,
-                                    background: "#ecfdf5",
-                                    color: "#166534",
-                                    border: "1px solid #a7f3d0",
-                                    borderRadius: 6,
-                                    padding: "3px 8px",
-                                    fontSize: 11.5,
-                                    fontWeight: 800,
-                                    cursor: "pointer",
-                                    width: "fit-content"
-                                  }}
-                                  title="Click to view full payment screenshot"
-                                >
-                                  <span>🖼️ SS Attached</span>
-                                </button>
-                              ) : (
-                                <span style={{ fontSize: 11, color: "#d97706", background: "#fef3c7", padding: "2px 6px", borderRadius: 4, width: "fit-content", fontWeight: 700 }}>
-                                  ⏳ SS Pending
-                                </span>
-                              )}
-                              {o.upi_utr && o.upi_utr !== "PAY_AT_STORE" && (
-                                <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)", fontWeight: 700 }}>
-                                  UTR: {o.upi_utr}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          {/* Specs & Fulfillment */}
-                          <td style={{ fontSize: 12 }}>
-                            <div><b>{o.paper_size}</b> • {o.color_mode === "COLOR" ? "Color" : "B&W"}</div>
-                            <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{o.page_count}pgs × {o.copies}cps • {o.delivery_mode === "DELIVERY" ? "🚚 Delivery" : "🏪 Pickup"}</div>
-                          </td>
-                          <td style={{ fontWeight: 900, color: "var(--primary)" }}>₹{o.total}.00</td>
-                          <td>
-                            <span className={`status-badge status-${o.status}`}>
-                              {o.status?.replaceAll("_", " ")}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              onClick={() => setSelectedOrder(o)}
-                              className="btn btn-secondary btn-sm"
-                              style={{ fontWeight: 800 }}
-                            >
-                              <Eye size={13} />
-                              <span>Manage</span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* User Session History Inspector Modal */}
-      {selectedUserInspect && (
-        <div className="modal-backdrop" onClick={() => setSelectedUserInspect(null)}>
+      {showDbToolsModal && (
+        <div className="modal-backdrop" onClick={() => setShowDbToolsModal(false)}>
           <div
             className="card"
-            style={{ maxWidth: 640, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}
+            style={{ maxWidth: 540, width: "100%", position: "relative" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #4f46e5, #06b6d4)", color: "white", display: "grid", placeItems: "center", fontWeight: 900 }}>
-                  {(selectedUserInspect.name || "G")[0]}
-                </div>
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>{selectedUserInspect.name || "Guest Visitor"}</h3>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Session: <code>{selectedUserInspect.sessionId}</code></div>
-                </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#dc2626" }}>
+                <Trash2 size={20} />
+                <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>Database Maintenance &amp; Clear Tools</h3>
               </div>
-
               <button
-                onClick={() => setSelectedUserInspect(null)}
+                type="button"
+                onClick={() => setShowDbToolsModal(false)}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 16, fontSize: 13 }}>
-              <div>📱 <b>Device:</b> {selectedUserInspect.deviceInfo || "Desktop Browser"}</div>
-              <div style={{ marginTop: 4 }}>📍 <b>Location:</b> {selectedUserInspect.locality || "Boisar, Maharashtra"}</div>
-              <div style={{ marginTop: 4 }}>🧭 <b>Current Route:</b> <code>{selectedUserInspect.currentPath || "/"}</code></div>
-              <div style={{ marginTop: 4 }}>🟢 <b>Online Since:</b> <FormattedDate date={selectedUserInspect.onlineAt || new Date().toISOString()} /></div>
-            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Option 1: Clean Delivered Orders */}
+              <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
+                  🧹 Clear Delivered Orders Only ({deliveredCount})
+                </div>
+                <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 10px" }}>
+                  Safely clears fulfilled delivered orders and their storage files to free up database capacity.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClearDeliveredOrdersOnly}
+                  disabled={dbActionLoading || deliveredCount === 0}
+                  className="btn btn-sm"
+                  style={{ background: "#0284c7", color: "white", fontWeight: 800 }}
+                >
+                  Clear {deliveredCount} Delivered Orders
+                </button>
+              </div>
 
-            <h4 style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>
-              Recent Action Timeline ({actionLogs.filter((a) => a.sessionId === selectedUserInspect.sessionId).length} events)
-            </h4>
+              {/* Option 2: Clean Cancelled Orders */}
+              <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid var(--border)" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
+                  ❌ Clear Cancelled Orders ({cancelledCount})
+                </div>
+                <p style={{ fontSize: 12.5, color: "var(--text-muted)", margin: "0 0 10px" }}>
+                  Removes junk/cancelled orders from the database.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClearCancelledOrdersOnly}
+                  disabled={dbActionLoading || cancelledCount === 0}
+                  className="btn btn-sm"
+                  style={{ background: "#64748b", color: "white", fontWeight: 800 }}
+                >
+                  Clear {cancelledCount} Cancelled Orders
+                </button>
+              </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {actionLogs
-                .filter((a) => a.sessionId === selectedUserInspect.sessionId)
-                .map((act, i) => (
-                  <div key={i} style={{ padding: "8px 12px", background: "white", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}>
-                    <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{act.actionTitle}</div>
-                    <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>
-                      <FormattedDate date={act.timestamp} /> • <code>{act.pageUrl}</code>
-                    </div>
-                  </div>
-                ))}
+              {/* Option 3: DANGER - Wipe All Orders */}
+              <div style={{ background: "#fef2f2", padding: 16, borderRadius: 8, border: "1.5px solid #f87171" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#991b1b", fontWeight: 900, fontSize: 14, marginBottom: 6 }}>
+                  <AlertTriangle size={18} />
+                  <span>DANGER ZONE: Clear ALL Orders ({orders.length})</span>
+                </div>
+                <p style={{ fontSize: 12.5, color: "#7f1d1d", margin: "0 0 12px", lineHeight: 1.5 }}>
+                  This will <b>permanently erase all orders, uploaded print documents, UTR references, and status history logs</b>.
+                </p>
+
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 12, fontWeight: 800, color: "#991b1b", display: "block", marginBottom: 4 }}>
+                    Type <code>CLEAR ALL</code> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="CLEAR ALL"
+                    value={clearConfirmText}
+                    onChange={(e) => setClearConfirmText(e.target.value)}
+                    style={{ fontSize: 13, fontWeight: 800, fontFamily: "monospace" }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearAllOrders}
+                  disabled={dbActionLoading || clearConfirmText !== "CLEAR ALL"}
+                  className="btn btn-sm"
+                  style={{
+                    background: clearConfirmText === "CLEAR ALL" ? "#dc2626" : "#cbd5e1",
+                    color: "white",
+                    fontWeight: 900,
+                    width: "100%",
+                    justifyContent: "center",
+                    cursor: clearConfirmText === "CLEAR ALL" ? "pointer" : "not-allowed"
+                  }}
+                >
+                  {dbActionLoading ? "Clearing Database..." : "Permanently Wipe All Orders 🗑️"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ========================================================= */}
-      {/* MANAGE ORDER MODAL (Full Files, Payment SS & Controls) */}
+      {/* SHOP PRODUCTION JOB SLIP / TICKET MODAL */}
+      {/* ========================================================= */}
+      {jobSlipOrder && (
+        <div className="modal-backdrop" onClick={() => setJobSlipOrder(null)}>
+          <div
+            className="card"
+            style={{ maxWidth: 440, width: "100%", position: "relative" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>🖨️ Production Job Ticket</h3>
+              <button onClick={() => setJobSlipOrder(null)} style={{ background: "none", border: "none", cursor: "pointer" }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Printable Ticket Area */}
+            <div 
+              id="printable-job-slip"
+              style={{
+                border: "2px dashed #334155",
+                borderRadius: 8,
+                padding: 16,
+                background: "#ffffff",
+                fontFamily: "monospace"
+              }}
+            >
+              <div style={{ textAlign: "center", borderBottom: "1px dashed #334155", paddingBottom: 10, marginBottom: 10 }}>
+                <div style={{ fontWeight: 900, fontSize: 16 }}>DHRUVANG CRAZY PRINTING</div>
+                <div style={{ fontSize: 11 }}>Boisar, Maharashtra • Store Counter</div>
+                <div style={{ fontSize: 18, fontWeight: 900, marginTop: 6 }}>
+                  ORDER #{jobSlipOrder.order_number}
+                </div>
+                <div style={{ fontSize: 11 }}>{new Date(jobSlipOrder.created_at).toLocaleString()}</div>
+              </div>
+
+              <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>
+                <div><b>Customer:</b> {jobSlipOrder.customer_name}</div>
+                <div><b>Contact:</b> {jobSlipOrder.customer_phone || "N/A"}</div>
+                <div><b>Delivery:</b> {jobSlipOrder.delivery_mode === "DELIVERY" ? "🚚 Boisar Doorstep" : "🏪 Counter Pickup"}</div>
+                {jobSlipOrder.address && <div style={{ fontSize: 11 }}>📍 {jobSlipOrder.address}</div>}
+              </div>
+
+              <div style={{ borderTop: "1px dashed #334155", borderBottom: "1px dashed #334155", padding: "8px 0", margin: "8px 0", fontSize: 12.5, lineHeight: 1.5 }}>
+                <div><b>Size:</b> {jobSlipOrder.paper_size}</div>
+                <div><b>Color Mode:</b> {jobSlipOrder.color_mode === "COLOR" ? "Full Color" : "Black & White"}</div>
+                <div><b>Sides:</b> {jobSlipOrder.sides === "DOUBLE" ? "Double Sided" : "Single Sided"}</div>
+                <div><b>Paper Type:</b> {jobSlipOrder.paper_type || "Standard"}</div>
+                <div><b>Binding:</b> {jobSlipOrder.binding_type || "None"}</div>
+                <div><b>Pages:</b> {jobSlipOrder.page_count || 1} pg(s)</div>
+                <div><b>Copies:</b> {jobSlipOrder.copies || 1} copy(s)</div>
+                {jobSlipOrder.priority === "EXPRESS" && <div style={{ fontWeight: 900, color: "#b45309" }}>⚡ PRIORITY: EXPRESS RUSH</div>}
+                {jobSlipOrder.notes && <div><b>Notes:</b> {jobSlipOrder.notes}</div>}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, fontWeight: 900, marginTop: 8 }}>
+                <span>TOTAL AMOUNT:</span>
+                <span style={{ fontSize: 18 }}>₹{jobSlipOrder.total}.00</span>
+              </div>
+              <div style={{ fontSize: 11, textAlign: "right", color: "#16a34a", fontWeight: 800 }}>
+                {jobSlipOrder.status === "DELIVERED" ? "✅ DELIVERED & PAID" : jobSlipOrder.upi_utr ? `UTR: ${jobSlipOrder.upi_utr}` : "CASH / STORE PAYMENT"}
+              </div>
+            </div>
+
+            <div className="no-print" style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="btn btn-sm"
+                style={{ flex: 1, justifyContent: "center", background: "var(--primary)", color: "white", fontWeight: 800 }}
+              >
+                <Printer size={15} />
+                <span>Print Job Ticket</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setJobSlipOrder(null)}
+                className="btn btn-secondary btn-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MANAGE ORDER DETAILS DRAWER / MODAL */}
       {/* ========================================================= */}
       {selectedOrder && (
         <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
@@ -1471,49 +2026,28 @@ export default function AdminDashboard() {
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                  Placed on <FormattedDate date={selectedOrder.created_at} /> • Total Amount: <b style={{ color: "var(--primary)" }}>₹{selectedOrder.total}.00</b>
+                  Placed on <FormattedDate date={selectedOrder.created_at} /> • Amount: <b style={{ color: "var(--primary)" }}>₹{selectedOrder.total}.00</b>
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedOrder(null)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
-              >
-                <X size={22} />
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setJobSlipOrder(selectedOrder)}
+                  className="btn btn-secondary btn-sm"
+                  title="Print Production Slip"
+                >
+                  <Printer size={14} />
+                  <span>Job Slip</span>
+                </button>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
+                >
+                  <X size={22} />
+                </button>
+              </div>
             </div>
-
-            {/* Issue / Refund Ticket Alert Banner */}
-            {hasIssueReport && (
-              <div style={{
-                background: "#fef2f2",
-                border: "1px solid #fca5a5",
-                borderRadius: "var(--radius-md)",
-                padding: "14px 16px",
-                marginBottom: 18,
-                color: "#991b1b"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, fontSize: 14, marginBottom: 4 }}>
-                  <AlertTriangle size={18} color="#dc2626" />
-                  <span>Customer Support / Refund Request Logged</span>
-                </div>
-                <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#7f1d1d" }}>
-                  The customer has reported an issue or requested a refund / replacement for this order. Check status history log below and contact customer immediately.
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <a
-                    href={buildWhatsAppLink(selectedOrder.customer_phone, `Hello ${selectedOrder.customer_name || "Customer"}, regarding your issue report on Order #${selectedOrder.order_number}, our store manager is here to assist you with free replacement or refund.`)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-whatsapp btn-sm"
-                    style={{ fontSize: 12 }}
-                  >
-                    <MessageCircle size={14} />
-                    <span>WhatsApp Customer to Resolve Issue</span>
-                  </a>
-                </div>
-              </div>
-            )}
 
             {/* Grid with 2 Columns: Files & Customer Info + Payment SS */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16, marginBottom: 20 }}>
@@ -1533,7 +2067,7 @@ export default function AdminDashboard() {
                 {(!selectedOrder.order_files || selectedOrder.order_files.length === 0) ? (
                   <div style={{ textAlign: "center", padding: "24px 10px", color: "var(--text-muted)", fontSize: 13 }}>
                     <FileText size={28} color="#cbd5e1" style={{ margin: "0 auto 8px" }} />
-                    <div>No files uploaded in database.</div>
+                    <div>No files attached.</div>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1575,7 +2109,6 @@ export default function AdminDashboard() {
                                 rel="noreferrer"
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: "5px 9px", fontSize: 12 }}
-                                title="Open / Preview file in new tab"
                               >
                                 <ExternalLink size={13} />
                                 <span>Preview</span>
@@ -1587,7 +2120,6 @@ export default function AdminDashboard() {
                               onClick={() => handleDownloadDocument(file.storage_path, file.original_name)}
                               className="btn btn-sm"
                               style={{ padding: "5px 10px", fontSize: 12, background: "var(--primary)", color: "white" }}
-                              title="Download document for printing"
                             >
                               <Download size={13} />
                               <span>Download</span>
@@ -1605,7 +2137,7 @@ export default function AdminDashboard() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 14 }}>
                     <IndianRupee size={16} color="#16a34a" />
-                    <span>Payment Verification &amp; SS</span>
+                    <span>Payment Verification &amp; Proof</span>
                   </div>
                   {selectedOrder.status === "PAYMENT_VERIFIED" ? (
                     <span style={{ background: "#ecfdf5", color: "#166534", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999, border: "1px solid #a7f3d0" }}>
@@ -1618,30 +2150,16 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                {/* Pay at Store Notification Card if selected */}
+                {/* Pay at Store Badge */}
                 {Boolean(selectedOrder.upi_utr === "PAY_AT_STORE" || selectedOrder.notes?.includes("PAY_AT_STORE")) && (
                   <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#0369a1", fontWeight: 800, fontSize: 13.5, marginBottom: 4 }}>
                       <Store size={16} />
                       <span>Pay at Store Counter Selected</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "#075985", lineHeight: 1.5 }}>
-                      Customer selected to pay <b>₹{selectedOrder.total}.00</b> via <b>Cash, Card, or UPI Standee</b> at the shop desk when picking up.
+                    <div style={{ fontSize: 12.5, color: "#075985" }}>
+                      Customer selected to pay <b>₹{selectedOrder.total}.00</b> via Cash or UPI Standee upon collecting prints.
                     </div>
-
-                    {selectedOrder.status !== "PAYMENT_VERIFIED" && selectedOrder.status !== "CANCELLED" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", `Cash/Counter payment of ₹${selectedOrder.total}.00 collected at store desk by cashier.`);
-                        }}
-                        className="btn btn-success"
-                        style={{ width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}
-                      >
-                        <CheckCircle2 size={16} />
-                        <span>Collect Cash &amp; Verify Payment (₹{selectedOrder.total}.00)</span>
-                      </button>
-                    )}
                   </div>
                 )}
 
@@ -1649,8 +2167,8 @@ export default function AdminDashboard() {
                 {selectedOrder.upi_utr && selectedOrder.upi_utr !== "PAY_AT_STORE" && (
                   <div style={{ background: "white", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>UPI Transaction Ref (UTR):</div>
-                      <div style={{ fontSize: 14, fontWeight: 900, fontFamily: "monospace", color: "var(--text-main)" }}>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700 }}>12-Digit UPI Transaction ID (UTR):</div>
+                      <div style={{ fontSize: 14, fontWeight: 900, fontFamily: "monospace", letterSpacing: 1, color: "#1e1b4b" }}>
                         {selectedOrder.upi_utr}
                       </div>
                     </div>
@@ -1658,7 +2176,7 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => handleCopyUtr(selectedOrder.upi_utr)}
                       className="btn btn-secondary btn-sm"
-                      style={{ fontSize: 11, padding: "4px 8px" }}
+                      style={{ padding: "4px 8px", fontSize: 11 }}
                     >
                       {copiedUtr ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
                       <span>{copiedUtr ? "Copied" : "Copy"}</span>
@@ -1666,252 +2184,118 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                {/* Screenshot Image Preview */}
+                {/* Payment Screenshot Image Preview */}
                 {selectedOrderProofUrl ? (
                   <div>
-                    <div
-                      style={{
-                        position: "relative",
-                        borderRadius: 8,
-                        overflow: "hidden",
-                        border: "2px solid #bbf7d0",
-                        cursor: "pointer",
-                        maxHeight: 180,
-                        textAlign: "center",
-                        background: "#000"
-                      }}
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Payment Screenshot Proof:</div>
+                    <div 
                       onClick={() => setPreviewImage(selectedOrderProofUrl)}
-                      title="Click to zoom payment screenshot"
+                      style={{ 
+                        maxHeight: 180, 
+                        overflow: "hidden", 
+                        borderRadius: 8, 
+                        border: "1px solid var(--border)",
+                        cursor: "zoom-in",
+                        background: "#000",
+                        position: "relative"
+                      }}
                     >
-                      <img
-                        src={selectedOrderProofUrl}
-                        alt="Payment Screenshot"
-                        style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain", margin: "0 auto", display: "block" }}
+                      <img 
+                        src={selectedOrderProofUrl} 
+                        alt="Payment Proof" 
+                        style={{ width: "100%", height: 180, objectFit: "contain", display: "block" }} 
                       />
-                      <div style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        background: "rgba(0,0,0,0.7)",
-                        color: "white",
-                        fontSize: 11,
-                        padding: "4px 8px",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 4
-                      }}>
-                        <Eye size={12} />
-                        <span>Click to view Full-Screen Screenshot</span>
-                      </div>
                     </div>
-
-                    {/* Quick Approve Button */}
-                    {selectedOrder.status !== "PAYMENT_VERIFIED" && selectedOrder.status !== "CANCELLED" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", `Payment verified via UPI screenshot (UTR: ${selectedOrder.upi_utr || "Verified"}). Proceeding to laser printing.`);
-                        }}
-                        className="btn btn-success"
-                        style={{ width: "100%", justifyContent: "center", marginTop: 12, fontWeight: 900 }}
-                      >
-                        <CheckCircle2 size={16} />
-                        <span>Approve &amp; Confirm Payment (₹{selectedOrder.total}.00)</span>
-                      </button>
-                    )}
                   </div>
-                ) : !Boolean(selectedOrder.upi_utr === "PAY_AT_STORE" || selectedOrder.notes?.includes("PAY_AT_STORE")) && (
-                  <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--text-muted)", fontSize: 12 }}>
-                    <AlertCircle size={24} color="#f59e0b" style={{ margin: "0 auto 6px" }} />
-                    <div>Customer hasn't uploaded payment screenshot yet.</div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    No payment screenshot image attached.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Customer & Fulfillment Details */}
-            <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: 16, marginBottom: 20 }}>
-              <h4 style={{ fontSize: 13, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10, color: "var(--text-muted)" }}>
-                Customer &amp; Fulfillment Specs
-              </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, fontSize: 13 }}>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Recipient:</span>
-                  <div style={{ fontWeight: 800 }}>{selectedOrder.customer_name || selectedOrder.profiles?.name || "Customer"}</div>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Phone Number:</span>
-                  <div style={{ fontWeight: 800 }}>
-                    <a href={`tel:${selectedOrder.customer_phone}`} style={{ color: "var(--primary)", textDecoration: "none" }}>
-                      📞 {selectedOrder.customer_phone || selectedOrder.profiles?.phone || "N/A"}
-                    </a>
-                  </div>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Print Job:</span>
-                  <div style={{ fontWeight: 800 }}>{selectedOrder.paper_size} • {selectedOrder.color_mode === "COLOR" ? "Full Colour" : "B&W"} • {selectedOrder.sides === "DOUBLE" ? "Double Sided" : "Single Sided"}</div>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Pages × Copies:</span>
-                  <div style={{ fontWeight: 800 }}>{selectedOrder.page_count} pages × {selectedOrder.copies} copy(s)</div>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Binding:</span>
-                  <div style={{ fontWeight: 800 }}>{selectedOrder.binding_type || "No Binding"}</div>
-                </div>
-                <div>
-                  <span style={{ color: "var(--text-muted)" }}>Fulfillment:</span>
-                  <div style={{ fontWeight: 800 }}>{selectedOrder.delivery_mode === "DELIVERY" ? "🚚 Doorstep Delivery" : "🏪 Counter Pickup"}</div>
-                </div>
+            {/* Status Change Operations Bar */}
+            <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, color: "var(--text-main)" }}>
+                ⚡ Update Order Status:
               </div>
-              {selectedOrder.address && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12.5 }}>
-                  <span style={{ color: "var(--text-muted)" }}>📍 Delivery Address:</span>
-                  <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{selectedOrder.address}</div>
-                </div>
-              )}
-              {selectedOrder.notes && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#854d0e", background: "#fef9c3", padding: "6px 10px", borderRadius: 6 }}>
-                  <b>Customer Notes:</b> {selectedOrder.notes}
-                </div>
-              )}
-            </div>
-
-            {/* Status Transition Row */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 13, fontWeight: 800, display: "block", marginBottom: 8 }}>
-                Update Order Stage:
-              </label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {STATUS_LIST.filter((s) => s.key !== "ALL").map((st) => {
-                  const isCurrent = selectedOrder.status === st.key;
-                  return (
-                    <button
-                      key={st.key}
-                      disabled={updating || isCurrent}
-                      onClick={() => handleStatusChange(selectedOrder.id, st.key)}
-                      style={{
-                        background: isCurrent ? "var(--primary)" : "#f1f5f9",
-                        color: isCurrent ? "white" : "var(--text-main)",
-                        border: "none",
-                        padding: "7px 12px",
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: isCurrent ? "default" : "pointer"
-                      }}
-                    >
-                      {st.label}
-                    </button>
-                  );
-                })}
+                {STATUS_LIST.filter((s) => s.key !== "ALL").map((st) => (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => handleStatusChange(selectedOrder.id, st.key)}
+                    disabled={updating || selectedOrder.status === st.key}
+                    className="btn btn-sm"
+                    style={{
+                      background: selectedOrder.status === st.key ? "var(--primary)" : "white",
+                      color: selectedOrder.status === st.key ? "white" : "var(--text-main)",
+                      border: "1px solid var(--border)",
+                      fontWeight: selectedOrder.status === st.key ? 900 : 600,
+                      fontSize: 12,
+                      opacity: selectedOrder.status === st.key ? 1 : 0.85
+                    }}
+                  >
+                    {st.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            {/* Modal Bottom Actions */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
               <button
                 type="button"
-                onClick={() => setInvoiceModalOrder(selectedOrder)}
+                onClick={() => handleDeleteSingleOrder(selectedOrder.id, selectedOrder.order_number)}
+                disabled={updating}
                 className="btn btn-sm"
-                style={{ background: "#0f172a", color: "white" }}
+                style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", fontWeight: 800 }}
               >
-                <Receipt size={14} />
-                <span>View Official Tax Invoice</span>
+                <Trash2 size={14} />
+                <span>Delete Order</span>
               </button>
 
-              <a
-                href={buildWhatsAppLink(selectedOrder.customer_phone, buildOrderStatusMessage(selectedOrder, selectedOrder.status))}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-whatsapp btn-sm"
-              >
-                <MessageCircle size={14} />
-                <span>Send WhatsApp Live Update</span>
-              </a>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModalOrder(selectedOrder)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  <Receipt size={14} />
+                  <span>View Tax Invoice</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Full-Screen Payment Screenshot Zoom Modal */}
+      {/* Image Zoom Preview Modal */}
       {previewImage && (
-        <div className="modal-backdrop" onClick={() => setPreviewImage(null)} style={{ zIndex: 99999 }}>
-          <div style={{ maxWidth: 800, width: "90%", position: "relative", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={() => setPreviewImage(null)} style={{ zIndex: 9999 }}>
+          <div style={{ maxWidth: "90vw", maxHeight: "90vh", position: "relative" }} onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="Zoom Preview" style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 8, display: "block" }} />
             <button
-              type="button"
               onClick={() => setPreviewImage(null)}
-              style={{
-                position: "absolute",
-                top: -14,
-                right: -14,
-                background: "white",
-                border: "none",
-                borderRadius: "50%",
-                width: 36,
-                height: 36,
-                display: "grid",
-                placeItems: "center",
-                cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(0,0,0,0.3)"
-              }}
+              style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.7)", color: "white", border: "none", borderRadius: "50%", width: 36, height: 36, display: "grid", placeItems: "center", cursor: "pointer" }}
             >
               <X size={20} />
             </button>
-            <img
-              src={previewImage}
-              alt="Full Payment Screenshot"
-              style={{ width: "100%", maxHeight: "85vh", objectFit: "contain", borderRadius: 12, background: "#000" }}
-            />
-            <div style={{ marginTop: 10 }}>
-              <a
-                href={previewImage}
-                download="payment-screenshot.png"
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-secondary btn-sm"
-                style={{ background: "rgba(255,255,255,0.9)" }}
-              >
-                <Download size={14} />
-                <span>Download Screenshot File</span>
-              </a>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Tax Invoice Modal */}
+      {/* Official Tax Invoice Modal */}
       {invoiceModalOrder && (
-        <div className="modal-backdrop" onClick={() => setInvoiceModalOrder(null)}>
-          <div style={{ maxWidth: 840, width: "100%", maxHeight: "95vh", overflowY: "auto", position: "relative" }} onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setInvoiceModalOrder(null)}
-              className="no-print"
-              style={{
-                position: "absolute",
-                top: 14,
-                right: 14,
-                zIndex: 10,
-                background: "white",
-                border: "1px solid var(--border)",
-                borderRadius: "50%",
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
-              }}
-            >
-              <X size={18} />
-            </button>
-            <OfficialTaxInvoice order={invoiceModalOrder} />
-          </div>
-        </div>
+        <OfficialTaxInvoice order={invoiceModalOrder} onClose={() => setInvoiceModalOrder(null)} />
       )}
     </main>
   );
