@@ -18,8 +18,13 @@ export default function BetaTestingNotice() {
 
   useEffect(() => {
     setHasMounted(true);
-    // Check if user previously dismissed during this session
-    const dismissed = sessionStorage.getItem("crazy_print_beta_notice_dismissed");
+    let dismissed = false;
+    try {
+      dismissed = typeof window !== "undefined" && sessionStorage.getItem("crazy_print_beta_notice_dismissed") === "true";
+    } catch (e) {
+      dismissed = false;
+    }
+
     if (!dismissed) {
       // Delay slightly for smooth entrance
       const timer = setTimeout(() => {
@@ -30,7 +35,11 @@ export default function BetaTestingNotice() {
   }, []);
 
   function handleDismiss() {
-    sessionStorage.setItem("crazy_print_beta_notice_dismissed", "true");
+    try {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("crazy_print_beta_notice_dismissed", "true");
+      }
+    } catch (e) {}
     setIsOpen(false);
   }
 
