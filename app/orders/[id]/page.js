@@ -33,7 +33,8 @@ import {
   Home,
   RefreshCw,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Store
 } from "lucide-react";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
@@ -755,13 +756,44 @@ export default function Detail() {
           </div>
         </div>
 
+        {/* Pay at Store Counter Banner */}
+        {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) && !isPaid && (
+          <div className="no-print" style={{ background: "#f0f9ff", border: "2px solid #0284c7", borderRadius: "var(--radius-lg)", padding: "20px 24px", marginBottom: 24, boxShadow: "0 10px 25px -5px rgba(2, 132, 199, 0.15)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#e0f2fe", color: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Store size={26} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0369a1", margin: 0 }}>
+                    🏪 Selected: Pay at Store Counter (Cash / UPI upon Pickup)
+                  </h3>
+                  <span style={{ background: "#0284c7", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
+                    AMOUNT DUE: ₹{o.total}.00
+                  </span>
+                </div>
+                <p style={{ fontSize: 14, color: "#075985", lineHeight: 1.6, margin: "6px 0 12px" }}>
+                  Your order is received and queued! You can pay <b>₹{o.total}.00</b> via <b>Cash, Card, or UPI Standee</b> at our shop counter when collecting your prints (or upon doorstep delivery). <b>No online screenshot upload is required.</b>
+                </p>
+                <div style={{ fontSize: 13, color: "#0369a1", fontWeight: 700 }}>
+                  📍 Store Address: Dhruvang Crazy Printing Center, Boisar, Maharashtra (Opp. Station / Main Market) • Helpline: 📞 8857871669
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Anti-Fraud UPI Payment Box */}
         {!isPaid && (
           <div className="card no-print" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <h2 className="card-title">
                 <ShieldCheck size={20} color="var(--primary)" />
-                <span>Anti-Fraud Secure UPI Payment</span>
+                <span>
+                  {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) 
+                    ? "Or Fast-Track: Pay Online via UPI Now" 
+                    : "Anti-Fraud Secure UPI Payment"}
+                </span>
               </h2>
               <span className="status-badge status-PAYMENT_SUBMITTED">Amount: ₹{o.total}</span>
             </div>

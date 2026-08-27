@@ -147,6 +147,7 @@ export default function Order() {
   const [copies, setCopies] = useState(1);
   const [bindingType, setBindingType] = useState("NONE");
   const [priority, setPriority] = useState("STANDARD");
+  const [paymentMethod, setPaymentMethod] = useState("UPI_ONLINE"); // "UPI_ONLINE" | "PAY_AT_STORE"
 
   // Calculated Price Breakdown
   const [printCost, setPrintCost] = useState(0);
@@ -532,6 +533,10 @@ export default function Order() {
         ? `${address}${landmark ? `, Near ${landmark}` : ""}, ${city || "Boisar, Maharashtra"} - ${pincode || "401501"}`
         : "Shop Counter Pickup - Dhruvang Crazy Printing Center, Boisar";
 
+      const isPayAtStore = paymentMethod === "PAY_AT_STORE";
+      const paymentNotes = isPayAtStore ? "[PAYMENT_MODE: PAY_AT_STORE - Cash/UPI at Counter]" : "[PAYMENT_MODE: UPI_ONLINE]";
+      const combinedNotes = notes.trim() ? `${notes.trim()} | ${paymentNotes}` : paymentNotes;
+
       const orderPayload = {
         user_id: currentUser.id,
         customer_name: customerName.trim(),
@@ -549,10 +554,11 @@ export default function Order() {
         binding_type: bindingType,
         priority: priority,
         page_count: totalPages,
-        notes: notes.trim() || null,
+        notes: combinedNotes,
         subtotal: printCost,
         total: totalPrice,
         status: "ORDER_RECEIVED",
+        upi_utr: isPayAtStore ? "PAY_AT_STORE" : null,
       };
 
       // Parallel concurrent file uploads for lightning-fast speed
@@ -593,7 +599,7 @@ export default function Order() {
         p_binding_type: bindingType,
         p_priority: priority,
         p_page_count: totalPages,
-        p_notes: notes.trim() || null,
+        p_notes: combinedNotes,
         p_subtotal: printCost,
         p_total: totalPrice,
         p_files: uploadedFiles,
@@ -627,7 +633,9 @@ export default function Order() {
         await s.from("status_history").insert({
           order_id: order.id,
           status: "ORDER_RECEIVED",
-          message: `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s). Delivery: ${deliveryMode === "DELIVERY" ? "Boisar 401501 Doorstep" : "Store Counter Pickup"}.`,
+          message: isPayAtStore
+            ? `Order submitted by ${customerName}. Payment Mode: 🏪 Pay at Store Counter (Cash / UPI upon pickup). Total: ₹${totalPrice}.00.`
+            : `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s). Delivery: ${deliveryMode === "DELIVERY" ? "Boisar 401501 Doorstep" : "Store Counter Pickup"}.`,
         });
       }
 
@@ -1319,11 +1327,55 @@ export default function Order() {
             </div>
           </div>
 
-          {/* 7. Live Cost Summary & Order Submission */}
+          {/* 7. Payment Mode Selection (UPI Online vs Pay at Store) */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">
+                <IndianRupee size={20} color="var(--primary)" />
+                <span>7. Select Payment Mode</span>
+              </h2>
+            </div>
+
+            <div className="row" style={{ marginBottom: 8 }}>
+              {/* Option A: Pay Online via UPI */}
+              <div
+                className={`option-card ${paymentMethod === "UPI_ONLINE" ? "selected" : ""}`}
+                onClick={() => setPaymentMethod("UPI_ONLINE")}
+                style={{ cursor: "pointer" }}
+              >
+                <div className="option-card-title">
+                  <span>📲 Pay Online via UPI (Recommended)</span>
+                  {paymentMethod === "UPI_ONLINE" && <Check size={16} color="var(--primary)" />}
+                </div>
+                <div className="option-card-desc">
+                  Scan UPI QR (GPay / PhonePe / Paytm). Upload screenshot for instant queue jump &amp; priority laser printing.
+                </div>
+                <div className="option-card-price" style={{ color: "#16a34a" }}>Fast-Track Queue</div>
+              </div>
+
+              {/* Option B: Pay at Store / Cash on Pickup */}
+              <div
+                className={`option-card ${paymentMethod === "PAY_AT_STORE" ? "selected" : ""}`}
+                onClick={() => setPaymentMethod("PAY_AT_STORE")}
+                style={{ cursor: "pointer" }}
+              >
+                <div className="option-card-title">
+                  <span>🏪 Pay at Store Counter (Cash / UPI)</span>
+                  {paymentMethod === "PAY_AT_STORE" && <Check size={16} color="var(--primary)" />}
+                </div>
+                <div className="option-card-desc">
+                  Pay via Cash or UPI at the store desk when collecting your prints (or upon delivery). No screenshot needed.
+                </div>
+                <div className="option-card-price" style={{ color: "#0284c7" }}>Pay on Pickup</div>
+              </div>
+            </div>
+          </div>
+
+          {/* 8. Live Cost Summary & Order Submission */}
           <div className="card" style={{ background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)", color: "white", padding: 24, boxShadow: "0 20px 40px rgba(15, 23, 42, 0.4)" }}>
             <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
               <Sparkles size={20} color="#38bdf8" />
-              <span>Live Order Summary & Cost Breakdown</span>
+              <span>Live Order Summary &amp; Cost Breakdown</span>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14, borderBottom: "1px solid rgba(255,255,255,0.15)", paddingBottom: 16, marginBottom: 16 }}>
@@ -1355,6 +1407,14 @@ export default function Order() {
                 </span>
                 <b>{deliveryCost > 0 ? `+₹${deliveryCost}.00` : "FREE (₹0.00)"}</b>
               </div>
+
+              {/* Selected Payment Mode Display */}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: "1px dashed rgba(255,255,255,0.1)" }}>
+                <span style={{ color: "#94a3b8" }}>💳 Payment Mode:</span>
+                <b style={{ color: paymentMethod === "PAY_AT_STORE" ? "#38bdf8" : "#4ade80" }}>
+                  {paymentMethod === "PAY_AT_STORE" ? "🏪 Pay at Store Counter (Cash/Card)" : "📲 Pay Online via UPI"}
+                </b>
+              </div>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
@@ -1383,7 +1443,13 @@ export default function Order() {
                 }}
               >
                 <Zap size={20} />
-                <span>{loading ? "Confirming Order..." : "Confirm & Place Print Order ⚡"}</span>
+                <span>
+                  {loading 
+                    ? "Confirming Order..." 
+                    : paymentMethod === "PAY_AT_STORE" 
+                      ? "Place Order (Pay at Counter) 🏪" 
+                      : "Confirm & Place Order (Pay via UPI) ⚡"}
+                </span>
                 <ArrowRight size={18} />
               </button>
             </div>

@@ -37,7 +37,8 @@ import {
   AlertTriangle,
   Volume2,
   VolumeX,
-  AlertCircle
+  AlertCircle,
+  Store
 } from "lucide-react";
 import { buildWhatsAppLink, buildOrderStatusMessage, openWhatsAppChat } from "../../lib/whatsapp";
 import OfficialTaxInvoice from "../../components/OfficialTaxInvoice";
@@ -1308,7 +1309,29 @@ export default function AdminDashboard() {
                           {/* Payment Screenshot & UTR */}
                           <td>
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                              {hasProof ? (
+                              {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedOrder(o)}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    background: "#e0f2fe",
+                                    color: "#0369a1",
+                                    border: "1px solid #bae6fd",
+                                    borderRadius: 6,
+                                    padding: "3px 8px",
+                                    fontSize: 11.5,
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    width: "fit-content"
+                                  }}
+                                  title="Customer selected Pay at Store (Cash/Counter)"
+                                >
+                                  <span>🏪 Pay at Store</span>
+                                </button>
+                              ) : hasProof ? (
                                 <button
                                   type="button"
                                   onClick={() => setSelectedOrder(o)}
@@ -1335,7 +1358,7 @@ export default function AdminDashboard() {
                                   ⏳ SS Pending
                                 </span>
                               )}
-                              {o.upi_utr && (
+                              {o.upi_utr && o.upi_utr !== "PAY_AT_STORE" && (
                                 <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)", fontWeight: 700 }}>
                                   UTR: {o.upi_utr}
                                 </div>
@@ -1595,15 +1618,42 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
-                {/* 12-Digit UTR Number */}
-                <div style={{ background: "white", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>UPI Transaction Ref (UTR):</div>
-                    <div style={{ fontSize: 14, fontWeight: 900, fontFamily: "monospace", color: "var(--text-main)" }}>
-                      {selectedOrder.upi_utr || "No UTR Entered"}
+                {/* Pay at Store Notification Card if selected */}
+                {Boolean(selectedOrder.upi_utr === "PAY_AT_STORE" || selectedOrder.notes?.includes("PAY_AT_STORE")) && (
+                  <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#0369a1", fontWeight: 800, fontSize: 13.5, marginBottom: 4 }}>
+                      <Store size={16} />
+                      <span>Pay at Store Counter Selected</span>
                     </div>
+                    <div style={{ fontSize: 12.5, color: "#075985", lineHeight: 1.5 }}>
+                      Customer selected to pay <b>₹{selectedOrder.total}.00</b> via <b>Cash, Card, or UPI Standee</b> at the shop desk when picking up.
+                    </div>
+
+                    {selectedOrder.status !== "PAYMENT_VERIFIED" && selectedOrder.status !== "CANCELLED" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleStatusChange(selectedOrder.id, "PAYMENT_VERIFIED", `Cash/Counter payment of ₹${selectedOrder.total}.00 collected at store desk by cashier.`);
+                        }}
+                        className="btn btn-success"
+                        style={{ width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}
+                      >
+                        <CheckCircle2 size={16} />
+                        <span>Collect Cash &amp; Verify Payment (₹{selectedOrder.total}.00)</span>
+                      </button>
+                    )}
                   </div>
-                  {selectedOrder.upi_utr && (
+                )}
+
+                {/* 12-Digit UTR Number */}
+                {selectedOrder.upi_utr && selectedOrder.upi_utr !== "PAY_AT_STORE" && (
+                  <div style={{ background: "white", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>UPI Transaction Ref (UTR):</div>
+                      <div style={{ fontSize: 14, fontWeight: 900, fontFamily: "monospace", color: "var(--text-main)" }}>
+                        {selectedOrder.upi_utr}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleCopyUtr(selectedOrder.upi_utr)}
@@ -1613,8 +1663,8 @@ export default function AdminDashboard() {
                       {copiedUtr ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
                       <span>{copiedUtr ? "Copied" : "Copy"}</span>
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Screenshot Image Preview */}
                 {selectedOrderProofUrl ? (
@@ -1673,7 +1723,7 @@ export default function AdminDashboard() {
                       </button>
                     )}
                   </div>
-                ) : (
+                ) : !Boolean(selectedOrder.upi_utr === "PAY_AT_STORE" || selectedOrder.notes?.includes("PAY_AT_STORE")) && (
                   <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--text-muted)", fontSize: 12 }}>
                     <AlertCircle size={24} color="#f59e0b" style={{ margin: "0 auto 6px" }} />
                     <div>Customer hasn't uploaded payment screenshot yet.</div>
