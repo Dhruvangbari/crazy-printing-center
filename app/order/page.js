@@ -31,7 +31,10 @@ import {
   Store,
   Compass,
   AlertTriangle,
-  FileCheck
+  FileCheck,
+  Copy,
+  CreditCard,
+  ShieldCheck
 } from "lucide-react";
 import { countDocumentPages } from "../../lib/pageCounter";
 import BoisarDeliveryMap from "../../components/BoisarDeliveryMap";
@@ -149,12 +152,41 @@ export default function Order() {
   const [priority, setPriority] = useState("STANDARD");
   const [paymentMethod, setPaymentMethod] = useState("UPI_ONLINE"); // "UPI_ONLINE" | "PAY_AT_STORE"
 
+  // Upfront UPI Payment States (Pay Before Order)
+  const [utrNumber, setUtrNumber] = useState("");
+  const [paymentProof, setPaymentProof] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [copiedUpi, setCopiedUpi] = useState(false);
+
   // Calculated Price Breakdown
   const [printCost, setPrintCost] = useState(0);
   const [bindingCost, setBindingCost] = useState(0);
   const [priorityCost, setPriorityCost] = useState(0);
   const [deliveryCost, setDeliveryCost] = useState(0);
   const [totalPrice, setTotalPrice] = useState(0);
+
+  const shopUpi = process.env.NEXT_PUBLIC_UPI_ID || "8857871669@fam";
+  const upiPayUrl = `upi://pay?pa=${shopUpi}&pn=CrazyPrintingCenter&am=${totalPrice}&cu=INR&tn=${encodeURIComponent(`Print Order ₹${totalPrice}`)}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayUrl)}`;
+
+  function copyUpiId() {
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard.writeText(shopUpi);
+      setCopiedUpi(true);
+      setTimeout(() => setCopiedUpi(false), 2000);
+    }
+  }
+
+  function handleProofChange(e) {
+    const file = e.target.files?.[0] || null;
+    setPaymentProof(file);
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setProofPreview(url);
+    } else {
+      setProofPreview(null);
+    }
+  }
 
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -497,6 +529,17 @@ export default function Order() {
       }
     }
 
+    // 2. Strict Upfront Payment Validation
+    const isOnlinePayment = paymentMethod === "UPI_ONLINE";
+    const cleanUtr = utrNumber.trim();
+
+    if (isOnlinePayment) {
+      if (!cleanUtr || cleanUtr.length < 8) {
+        setErr(`Please complete UPI Payment of ₹${totalPrice}.00 and enter your 12-digit UPI Transaction ID / UTR number from GPay / PhonePe / Paytm / BHIM before confirming the order.`);
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -534,8 +577,26 @@ export default function Order() {
         : "Shop Counter Pickup - Dhruvang Crazy Printing Center, Boisar";
 
       const isPayAtStore = paymentMethod === "PAY_AT_STORE";
-      const paymentNotes = isPayAtStore ? "[PAYMENT_MODE: PAY_AT_STORE - Cash/UPI at Counter]" : "[PAYMENT_MODE: UPI_ONLINE]";
+      const paymentNotes = isPayAtStore ? "[PAYMENT_MODE: PAY_AT_STORE - Cash/UPI at Counter]" : `[PAYMENT_MODE: UPI_ONLINE - UTR: ${cleanUtr}]`;
       const combinedNotes = notes.trim() ? `${notes.trim()} | ${paymentNotes}` : paymentNotes;
+
+      // Upload Payment Screenshot Proof if attached
+      let paymentProofPath = null;
+      if (paymentProof) {
+        try {
+          const cleanProofName = paymentProof.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const pPath = `payment/${currentUser.id}-${Date.now()}-${cleanProofName}`;
+          const uProof = await s.storage.from("payment-proofs").upload(pPath, paymentProof);
+          if (!uProof.error) {
+            paymentProofPath = pPath;
+          }
+        } catch (proofErr) {
+          console.warn("Payment proof upload warning:", proofErr);
+        }
+      }
+
+      const initialStatus = isOnlinePayment ? "PAYMENT_SUBMITTED" : "ORDER_RECEIVED";
+      const finalUtr = isOnlinePayment ? cleanUtr : "PAY_AT_STORE";
 
       const orderPayload = {
         user_id: currentUser.id,
@@ -557,7 +618,9 @@ export default function Order() {
         notes: combinedNotes,
         subtotal: printCost,
         total: totalPrice,
-        status: "ORDER_RECEIVED",
+        status: initialStatus,
+        upi_utr: finalUtr,
+        payment_proof_path: paymentProofPath,
       };
 
       // Parallel concurrent file uploads for lightning-fast speed
@@ -606,6 +669,16 @@ export default function Order() {
 
       if (!atomicErr && atomicOrder) {
         order = atomicOrder;
+        // Update order with payment proof and UTR if atomic procedure created it
+        if (isOnlinePayment || paymentProofPath) {
+          try {
+            await s.from("orders").update({
+              status: initialStatus,
+              upi_utr: finalUtr,
+              payment_proof_path: paymentProofPath,
+            }).eq("id", order.id);
+          } catch (e) {}
+        }
       } else {
         // Fallback to standard insert
         const { data: fallbackOrder, error: orderErr } = await s
@@ -628,15 +701,15 @@ export default function Order() {
             ...fileMeta,
           });
         }
-
-        await s.from("status_history").insert({
-          order_id: order.id,
-          status: "ORDER_RECEIVED",
-          message: isPayAtStore
-            ? `Order submitted by ${customerName}. Payment Mode: 🏪 Pay at Store Counter (Cash / UPI upon pickup). Total: ₹${totalPrice}.00.`
-            : `Order submitted by ${customerName}. Specifications: ${paperSize}, ${colorMode}, ${totalPages} pages, ${copies} copy(s). Delivery: ${deliveryMode === "DELIVERY" ? "Boisar 401501 Doorstep" : "Store Counter Pickup"}.`,
-        });
       }
+
+      await s.from("status_history").insert({
+        order_id: order.id,
+        status: initialStatus,
+        message: isOnlinePayment
+          ? `Order submitted by ${customerName} with UPI payment (12-Digit UTR: ${cleanUtr}). Total: ₹${totalPrice}.00. Queued for fast-track printing.`
+          : `Order submitted by ${customerName}. Payment Mode: 🏪 Pay at Store Counter (Cash / UPI upon pickup). Total: ₹${totalPrice}.00.`,
+      });
 
       // Trigger AI Order Agent in background without blocking
       try {
@@ -1331,8 +1404,11 @@ export default function Order() {
             <div className="card-header">
               <h2 className="card-title">
                 <IndianRupee size={20} color="var(--primary)" />
-                <span>7. Select Payment Mode</span>
+                <span>7. Payment & Verification (Pay Before Order)</span>
               </h2>
+              <span className="status-badge status-PAYMENT_SUBMITTED" style={{ fontSize: 13 }}>
+                Pay: ₹{totalPrice}.00
+              </span>
             </div>
 
             <div className="row" style={{ marginBottom: 8 }}>
@@ -1343,13 +1419,13 @@ export default function Order() {
                 style={{ cursor: "pointer" }}
               >
                 <div className="option-card-title">
-                  <span>📲 Pay Online via UPI (Recommended)</span>
+                  <span>📲 Pay Online via UPI (Instant Queue Jump)</span>
                   {paymentMethod === "UPI_ONLINE" && <Check size={16} color="var(--primary)" />}
                 </div>
                 <div className="option-card-desc">
-                  Scan UPI QR (GPay / PhonePe / Paytm). Upload screenshot for instant queue jump &amp; priority laser printing.
+                  Scan Dynamic UPI QR (GPay / PhonePe / Paytm / BHIM) & enter 12-digit UTR for priority laser printing.
                 </div>
-                <div className="option-card-price" style={{ color: "#16a34a" }}>Fast-Track Queue</div>
+                <div className="option-card-price" style={{ color: "#16a34a" }}>Priority Fast-Track</div>
               </div>
 
               {/* Option B: Pay at Store / Cash on Pickup */}
@@ -1359,15 +1435,145 @@ export default function Order() {
                 style={{ cursor: "pointer" }}
               >
                 <div className="option-card-title">
-                  <span>🏪 Pay at Store Counter (Cash / UPI)</span>
+                  <span>🏪 Pay at Store Counter (Cash / Standee)</span>
                   {paymentMethod === "PAY_AT_STORE" && <Check size={16} color="var(--primary)" />}
                 </div>
                 <div className="option-card-desc">
-                  Pay via Cash or UPI at the store desk when collecting your prints (or upon delivery). No screenshot needed.
+                  Pay via Cash or UPI Standee at our shop counter when collecting your prints (or upon delivery).
                 </div>
                 <div className="option-card-price" style={{ color: "#0284c7" }}>Pay on Pickup</div>
               </div>
             </div>
+
+            {/* Step 7 Interactive UPI Payment Box (When Online UPI is selected) */}
+            {paymentMethod === "UPI_ONLINE" && (
+              <div 
+                style={{ 
+                  marginTop: 18, 
+                  background: "#f0fdf4", 
+                  border: "1.5px solid #86efac", 
+                  borderRadius: "var(--radius-lg)", 
+                  padding: 20,
+                  boxShadow: "0 4px 16px rgba(34, 197, 94, 0.08)"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <ShieldCheck size={20} color="#16a34a" />
+                  <span style={{ fontWeight: 800, fontSize: 16, color: "#166534" }}>
+                    Scan & Pay ₹{totalPrice}.00 via UPI (Google Pay, PhonePe, Paytm, BHIM)
+                  </span>
+                </div>
+
+                <div className="row" style={{ alignItems: "flex-start", gap: 20 }}>
+                  {/* UPI QR Box */}
+                  <div style={{ textAlign: "center", background: "white", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid #bbf7d0", flex: "0 0 220px" }}>
+                    <img
+                      src={qrCodeUrl}
+                      alt="UPI Payment QR Code"
+                      style={{ width: 170, height: 170, borderRadius: 8, margin: "0 auto 10px", display: "block" }}
+                    />
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#15803d", marginBottom: 6 }}>
+                      Exact Amount: ₹{totalPrice}.00
+                    </div>
+
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#f8fafc", padding: "5px 12px", borderRadius: 999, border: "1px solid var(--border)", fontSize: 12, fontWeight: 700 }}>
+                      <span>{shopUpi}</span>
+                      <button
+                        type="button"
+                        onClick={copyUpiId}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)", display: "inline-flex", alignItems: "center" }}
+                        title="Copy UPI ID"
+                      >
+                        {copiedUpi ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <a
+                        href={upiPayUrl}
+                        className="btn btn-sm"
+                        style={{
+                          background: "#16a34a",
+                          color: "white",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          width: "100%",
+                          justifyContent: "center",
+                          textDecoration: "none"
+                        }}
+                      >
+                        ⚡ Open UPI App on Phone
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* UTR Input & Screenshot Upload */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ background: "white", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid #bbf7d0" }}>
+                      <div className="field" style={{ marginBottom: 14 }}>
+                        <label style={{ fontSize: 13, fontWeight: 800, color: "#14532d", display: "flex", justifyContent: "space-between" }}>
+                          <span>12-Digit UPI Transaction ID / UTR Number <span style={{ color: "var(--danger)" }}>* (Required)</span></span>
+                          {utrNumber && utrNumber.length >= 8 && (
+                            <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>✓ UTR Entered</span>
+                          )}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 423456789012"
+                          maxLength={18}
+                          value={utrNumber}
+                          onChange={(e) => setUtrNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                          required={paymentMethod === "UPI_ONLINE"}
+                          style={{
+                            fontSize: 15,
+                            fontFamily: "monospace",
+                            letterSpacing: 1,
+                            borderColor: utrNumber.length >= 8 ? "#22c55e" : "var(--border)",
+                            background: utrNumber.length >= 8 ? "#f0fdf4" : "white"
+                          }}
+                        />
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+                          Found in transaction details of Google Pay, PhonePe, Paytm, or BHIM after payment.
+                        </div>
+                      </div>
+
+                      <div className="field" style={{ margin: 0 }}>
+                        <label style={{ fontSize: 13, fontWeight: 800, color: "#14532d", display: "flex", justifyContent: "space-between" }}>
+                          <span>📸 Attach Payment Screenshot (Optional / Faster Verification)</span>
+                          {paymentProof && (
+                            <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>✓ Attached</span>
+                          )}
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProofChange}
+                          style={{
+                            padding: "8px 10px",
+                            border: paymentProof ? "2px solid #22c55e" : "1px dashed #86efac",
+                            background: paymentProof ? "#f0fdf4" : "#faf5ff",
+                            borderRadius: "var(--radius-md)"
+                          }}
+                        />
+
+                        {proofPreview && (
+                          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, background: "#f8fafc", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}>
+                            <img
+                              src={proofPreview}
+                              alt="Payment Proof Preview"
+                              style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #86efac" }}
+                            />
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
+                              {paymentProof?.name}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 8. Live Cost Summary & Order Submission */}

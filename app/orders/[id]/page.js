@@ -838,95 +838,14 @@ export default function Detail() {
                 <ShieldCheck size={20} color="var(--primary)" />
                 <span>
                   {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) 
-                    ? "Fast-Track: Pay Online (Instant Print Queue)" 
-                    : "Secure Payment Gateway & UPI Verification"}
+                    ? "Fast-Track: Pay Online via UPI (Instant Print Queue)" 
+                    : "Direct UPI Payment & Verification"}
                 </span>
               </h2>
               <span className="status-badge status-PAYMENT_SUBMITTED">Amount: ₹{o.total}</span>
             </div>
 
-            {/* Primary Action: Instant Online Payment via Razorpay / King Gateway */}
-            <div 
-              style={{
-                background: "linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)",
-                borderRadius: "var(--radius-lg)",
-                padding: "20px 24px",
-                color: "white",
-                marginBottom: 20,
-                boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 16
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 260 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <Zap size={18} color="#fde047" />
-                  <span style={{ fontWeight: 900, fontSize: 16, letterSpacing: "-0.01em" }}>
-                    Instant Online Checkout (UPI • GPay • PhonePe • Cards)
-                  </span>
-                </div>
-                <p style={{ margin: 0, fontSize: 13, color: "rgba(255, 255, 255, 0.88)", lineHeight: 1.5 }}>
-                  Pay <b>₹{o.total}.00</b> seamlessly via Razorpay Gateway. Payment is verified automatically in 1 second with instant queue priority — <b>no screenshot upload needed</b>.
-                </p>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                  {["GPay", "PhonePe", "Paytm", "BHIM UPI", "Cards", "NetBanking"].map((badge) => (
-                    <span
-                      key={badge}
-                      style={{
-                        background: "rgba(255, 255, 255, 0.18)",
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: "0.02em"
-                      }}
-                    >
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <button
-                  type="button"
-                  onClick={handleRazorpayCheckout}
-                  disabled={razorpayLoading}
-                  className="btn"
-                  style={{
-                    background: "#fde047",
-                    color: "#1e1b4b",
-                    fontWeight: 900,
-                    fontSize: 15,
-                    padding: "14px 28px",
-                    borderRadius: "var(--radius-md)",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 10,
-                    boxShadow: "0 4px 14px rgba(0, 0, 0, 0.25)",
-                    transition: "all 0.2s ease"
-                  }}
-                >
-                  <CreditCard size={18} />
-                  <span>{razorpayLoading ? "Connecting Gateway..." : `Pay ₹${o.total}.00 Online`}</span>
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0", color: "var(--text-light)" }}>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              <span style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                OR Scan Direct UPI QR / Submit UTR
-              </span>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            </div>
-
-            <div className="row" style={{ alignItems: "flex-start" }}>
+            <div className="row" style={{ alignItems: "flex-start", marginTop: 8 }}>
               {/* QR Code */}
               <div style={{ textAlign: "center", padding: 16, background: "#f8fafc", borderRadius: "var(--radius-md)", flex: "0 0 220px" }}>
                 <img
