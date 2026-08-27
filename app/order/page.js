@@ -40,6 +40,7 @@ import { countDocumentPages } from "../../lib/pageCounter";
 import BoisarDeliveryMap from "../../components/BoisarDeliveryMap";
 import { logUserAction } from "../../lib/telemetry";
 import { playChime } from "../../lib/webNotifications";
+import { initiateRazorpayPayment } from "../../lib/razorpay";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -529,17 +530,6 @@ export default function Order() {
       }
     }
 
-    // 2. Strict Upfront Payment Validation
-    const isOnlinePayment = paymentMethod === "UPI_ONLINE";
-    const cleanUtr = utrNumber.trim();
-
-    if (isOnlinePayment) {
-      if (!cleanUtr || cleanUtr.length < 8) {
-        setErr(`Please complete UPI Payment of ₹${totalPrice}.00 and enter your 12-digit UPI Transaction ID / UTR number from GPay / PhonePe / Paytm / BHIM before confirming the order.`);
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
@@ -557,7 +547,7 @@ export default function Order() {
         return;
       }
 
-      // Persist customer profile details locally (Durability)
+      // Persist customer profile details locally
       saveCustomerData();
 
       // Update profile info in database
@@ -576,27 +566,8 @@ export default function Order() {
         ? `${address}${landmark ? `, Near ${landmark}` : ""}, ${city || "Boisar, Maharashtra"} - ${pincode || "401501"}`
         : "Shop Counter Pickup - Dhruvang Crazy Printing Center, Boisar";
 
-      const isPayAtStore = paymentMethod === "PAY_AT_STORE";
-      const paymentNotes = isPayAtStore ? "[PAYMENT_MODE: PAY_AT_STORE - Cash/UPI at Counter]" : `[PAYMENT_MODE: UPI_ONLINE - UTR: ${cleanUtr}]`;
+      const paymentNotes = `[PAYMENT_GATEWAY: RAZORPAY_ONLINE - ₹${totalPrice}.00]`;
       const combinedNotes = notes.trim() ? `${notes.trim()} | ${paymentNotes}` : paymentNotes;
-
-      // Upload Payment Screenshot Proof if attached
-      let paymentProofPath = null;
-      if (paymentProof) {
-        try {
-          const cleanProofName = paymentProof.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-          const pPath = `payment/${currentUser.id}-${Date.now()}-${cleanProofName}`;
-          const uProof = await s.storage.from("payment-proofs").upload(pPath, paymentProof);
-          if (!uProof.error) {
-            paymentProofPath = pPath;
-          }
-        } catch (proofErr) {
-          console.warn("Payment proof upload warning:", proofErr);
-        }
-      }
-
-      const initialStatus = isOnlinePayment ? "PAYMENT_SUBMITTED" : "ORDER_RECEIVED";
-      const finalUtr = isOnlinePayment ? cleanUtr : "PAY_AT_STORE";
 
       const orderPayload = {
         user_id: currentUser.id,
@@ -618,9 +589,9 @@ export default function Order() {
         notes: combinedNotes,
         subtotal: printCost,
         total: totalPrice,
-        status: initialStatus,
-        upi_utr: finalUtr,
-        payment_proof_path: paymentProofPath,
+        status: "PAYMENT_SUBMITTED",
+        upi_utr: "RAZORPAY_INITIATED",
+        payment_proof_path: "razorpay://pending",
       };
 
       // Parallel concurrent file uploads for lightning-fast speed
@@ -669,23 +640,6 @@ export default function Order() {
 
       if (!atomicErr && atomicOrder) {
         order = atomicOrder;
-        // Update order with payment proof and UTR if atomic procedure created it
-        if (isOnlinePayment || paymentProofPath) {
-          try {
-            await s.from("orders").update({
-              status: initialStatus,
-              upi_utr: finalUtr,
-              payment_proof_path: paymentProofPath,
-            }).eq("id", order.id);
-          } catch (e) {
-            try {
-              await s.from("orders").update({
-                status: initialStatus,
-                payment_proof_path: paymentProofPath,
-              }).eq("id", order.id);
-            } catch (err2) {}
-          }
-        }
       } else {
         // Fallback to standard insert with automatic schema resilience
         let { data: fallbackOrder, error: orderErr } = await s
@@ -694,7 +648,6 @@ export default function Order() {
           .select()
           .single();
 
-        // If upi_utr column is not yet in Supabase schema cache, retry without upi_utr safely
         if (orderErr && (orderErr.message?.includes("upi_utr") || orderErr.message?.includes("schema cache") || orderErr.code === "PGRST204")) {
           const { upi_utr, ...safePayload } = orderPayload;
           const retryRes = await s
@@ -724,44 +677,64 @@ export default function Order() {
 
       await s.from("status_history").insert({
         order_id: order.id,
-        status: initialStatus,
-        message: isOnlinePayment
-          ? `Order submitted by ${customerName} with UPI payment (12-Digit UTR: ${cleanUtr}). Total: ₹${totalPrice}.00. Queued for fast-track printing.`
-          : `Order submitted by ${customerName}. Payment Mode: 🏪 Pay at Store Counter (Cash / UPI upon pickup). Total: ₹${totalPrice}.00.`,
+        status: "PAYMENT_SUBMITTED",
+        message: `Order #${order.order_number} created for ₹${totalPrice}.00. Initiating Razorpay checkout.`,
       });
 
-      // Trigger AI Order Agent in background without blocking
-      try {
-        fetch("/api/ai/notify-admin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      // 2. Launch Razorpay Payment Gateway directly
+      setLoading(false);
+
+      initiateRazorpayPayment({
+        order: {
+          id: order.id,
+          order_number: order.order_number,
+          total: totalPrice,
+          customer_name: customerName.trim(),
+          customer_phone: fullPhone,
+          customer_email: currentUser.email,
+          paper_size: paperSize,
+          delivery_mode: deliveryMode,
+        },
+        onSuccess: async (paymentId) => {
+          try {
+            await s.from("orders").update({
+              status: "PAYMENT_VERIFIED",
+              upi_utr: paymentId,
+              payment_proof_path: `razorpay://${paymentId}`,
+              updated_at: new Date().toISOString(),
+            }).eq("id", order.id);
+
+            await s.from("status_history").insert({
+              order_id: order.id,
+              status: "PAYMENT_VERIFIED",
+              message: `💳 Payment of ₹${totalPrice}.00 successfully verified via Razorpay (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
+            });
+          } catch (e) {}
+
+          setOrderSuccess(true);
+          triggerConfetti();
+          playChime("success");
+
+          logUserAction("ORDER_PLACED", `Paid ₹${order.total}.00 via Razorpay (Ref: ${paymentId}) for Order #${order.order_number}`, {
             orderId: order.id,
-            orderData: order
-          })
-        }).catch(() => {});
-      } catch (e) {}
+            orderNumber: order.order_number,
+            total: order.total,
+            paymentId: paymentId,
+          });
 
-      // Fast celebration confetti animation & audio chime
-      setOrderSuccess(true);
-      triggerConfetti();
-      playChime("success");
-
-      logUserAction("ORDER_PLACED", `Placed Order #${order.order_number} for ₹${order.total}.00`, {
-        orderId: order.id,
-        orderNumber: order.order_number,
-        total: order.total,
-        deliveryMode: order.delivery_mode,
-        paperSize: order.paper_size,
-        colorMode: order.color_mode,
-        pageCount: totalPages,
-        copies: order.copies,
+          setTimeout(() => {
+            router.push(`/orders/${order.id}`);
+          }, 300);
+        },
+        onFailure: (err) => {
+          console.warn("Razorpay payment modal closed/failed:", err);
+          router.push(`/orders/${order.id}`);
+        },
+        onDismiss: () => {
+          router.push(`/orders/${order.id}`);
+        },
       });
 
-      // Ultra-rapid instant redirect to order tracking (120ms)
-      setTimeout(() => {
-        router.push(`/orders/${order.id}`);
-      }, 120);
     } catch (unexpected) {
       setErr(unexpected.message || "An unexpected error occurred.");
       setLoading(false);
@@ -1418,181 +1391,45 @@ export default function Order() {
             </div>
           </div>
 
-          {/* 7. Payment Mode Selection (UPI Online vs Pay at Store) */}
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">
-                <IndianRupee size={20} color="var(--primary)" />
-                <span>7. Payment & Verification (Pay Before Order)</span>
-              </h2>
-              <span className="status-badge status-PAYMENT_SUBMITTED" style={{ fontSize: 13 }}>
-                Pay: ₹{totalPrice}.00
+          {/* 7. Razorpay Payment Gateway Card */}
+          <div className="card" style={{ border: "1.5px solid #a5b4fc", background: "linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%)" }}>
+            <div className="card-header" style={{ borderBottom: "1px solid #e0e7ff", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "#4f46e5", color: "white", display: "grid", placeItems: "center" }}>
+                  <CreditCard size={20} />
+                </div>
+                <div>
+                  <h2 className="card-title" style={{ margin: 0, fontSize: 17, color: "#1e1b4b" }}>
+                    7. Secure Payment Gateway (Razorpay)
+                  </h2>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                    Instant verification with Google Pay, PhonePe, Paytm, BHIM UPI, Cards &amp; NetBanking
+                  </div>
+                </div>
+              </div>
+              <span className="status-badge status-PAYMENT_VERIFIED" style={{ fontSize: 13, background: "#ecfdf5", color: "#166534", border: "1px solid #a7f3d0" }}>
+                Total: ₹{totalPrice}.00
               </span>
             </div>
 
-            <div className="row" style={{ marginBottom: 8 }}>
-              {/* Option A: Pay Online via UPI */}
-              <div
-                className={`option-card ${paymentMethod === "UPI_ONLINE" ? "selected" : ""}`}
-                onClick={() => setPaymentMethod("UPI_ONLINE")}
-                style={{ cursor: "pointer" }}
-              >
-                <div className="option-card-title">
-                  <span>📲 Pay Online via UPI (Instant Queue Jump)</span>
-                  {paymentMethod === "UPI_ONLINE" && <Check size={16} color="var(--primary)" />}
+            <div style={{ padding: "12px 0 6px" }}>
+              {/* Payment Methods Badges */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ background: "white", padding: "6px 12px", borderRadius: 6, border: "1px solid #c7d2fe", fontSize: 12, fontWeight: 800, color: "#4338ca", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>🟢 Google Pay / PhonePe / Paytm</span>
                 </div>
-                <div className="option-card-desc">
-                  Scan Dynamic UPI QR (GPay / PhonePe / Paytm / BHIM) & enter 12-digit UTR for priority laser printing.
+                <div style={{ background: "white", padding: "6px 12px", borderRadius: 6, border: "1px solid #c7d2fe", fontSize: 12, fontWeight: 800, color: "#4338ca", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>💳 Cards (Visa, Master, RuPay)</span>
                 </div>
-                <div className="option-card-price" style={{ color: "#16a34a" }}>Priority Fast-Track</div>
+                <div style={{ background: "white", padding: "6px 12px", borderRadius: 6, border: "1px solid #c7d2fe", fontSize: 12, fontWeight: 800, color: "#4338ca", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>🏦 50+ Banks NetBanking</span>
+                </div>
               </div>
 
-              {/* Option B: Pay at Store / Cash on Pickup */}
-              <div
-                className={`option-card ${paymentMethod === "PAY_AT_STORE" ? "selected" : ""}`}
-                onClick={() => setPaymentMethod("PAY_AT_STORE")}
-                style={{ cursor: "pointer" }}
-              >
-                <div className="option-card-title">
-                  <span>🏪 Pay at Store Counter (Cash / Standee)</span>
-                  {paymentMethod === "PAY_AT_STORE" && <Check size={16} color="var(--primary)" />}
-                </div>
-                <div className="option-card-desc">
-                  Pay via Cash or UPI Standee at our shop counter when collecting your prints (or upon delivery).
-                </div>
-                <div className="option-card-price" style={{ color: "#0284c7" }}>Pay on Pickup</div>
+              <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, padding: "12px 14px", fontSize: 12.5, color: "#3730a3", lineHeight: 1.5 }}>
+                🔒 <b>100% Secure Checkout:</b> When you click the button below, Razorpay's official checkout popup will open directly on your screen to complete payment securely without needing manual screenshot uploads or UTR entry.
               </div>
             </div>
-
-            {/* Step 7 Interactive UPI Payment Box (When Online UPI is selected) */}
-            {paymentMethod === "UPI_ONLINE" && (
-              <div 
-                style={{ 
-                  marginTop: 18, 
-                  background: "#f0fdf4", 
-                  border: "1.5px solid #86efac", 
-                  borderRadius: "var(--radius-lg)", 
-                  padding: 20,
-                  boxShadow: "0 4px 16px rgba(34, 197, 94, 0.08)"
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <ShieldCheck size={20} color="#16a34a" />
-                  <span style={{ fontWeight: 800, fontSize: 16, color: "#166534" }}>
-                    Scan & Pay ₹{totalPrice}.00 via UPI (Google Pay, PhonePe, Paytm, BHIM)
-                  </span>
-                </div>
-
-                <div className="row" style={{ alignItems: "flex-start", gap: 20 }}>
-                  {/* UPI QR Box */}
-                  <div style={{ textAlign: "center", background: "white", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid #bbf7d0", flex: "0 0 220px" }}>
-                    <img
-                      src={qrCodeUrl}
-                      alt="UPI Payment QR Code"
-                      style={{ width: 170, height: 170, borderRadius: 8, margin: "0 auto 10px", display: "block" }}
-                    />
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#15803d", marginBottom: 6 }}>
-                      Exact Amount: ₹{totalPrice}.00
-                    </div>
-
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#f8fafc", padding: "5px 12px", borderRadius: 999, border: "1px solid var(--border)", fontSize: 12, fontWeight: 700 }}>
-                      <span>{shopUpi}</span>
-                      <button
-                        type="button"
-                        onClick={copyUpiId}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)", display: "inline-flex", alignItems: "center" }}
-                        title="Copy UPI ID"
-                      >
-                        {copiedUpi ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
-                      </button>
-                    </div>
-
-                    <div style={{ marginTop: 10 }}>
-                      <a
-                        href={upiPayUrl}
-                        className="btn btn-sm"
-                        style={{
-                          background: "#16a34a",
-                          color: "white",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          width: "100%",
-                          justifyContent: "center",
-                          textDecoration: "none"
-                        }}
-                      >
-                        ⚡ Open UPI App on Phone
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* UTR Input & Screenshot Upload */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ background: "white", padding: 16, borderRadius: "var(--radius-md)", border: "1px solid #bbf7d0" }}>
-                      <div className="field" style={{ marginBottom: 14 }}>
-                        <label style={{ fontSize: 13, fontWeight: 800, color: "#14532d", display: "flex", justifyContent: "space-between" }}>
-                          <span>12-Digit UPI Transaction ID / UTR Number <span style={{ color: "var(--danger)" }}>* (Required)</span></span>
-                          {utrNumber && utrNumber.length >= 8 && (
-                            <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>✓ UTR Entered</span>
-                          )}
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 423456789012"
-                          maxLength={18}
-                          value={utrNumber}
-                          onChange={(e) => setUtrNumber(e.target.value.replace(/[^0-9]/g, ""))}
-                          required={paymentMethod === "UPI_ONLINE"}
-                          style={{
-                            fontSize: 15,
-                            fontFamily: "monospace",
-                            letterSpacing: 1,
-                            borderColor: utrNumber.length >= 8 ? "#22c55e" : "var(--border)",
-                            background: utrNumber.length >= 8 ? "#f0fdf4" : "white"
-                          }}
-                        />
-                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
-                          Found in transaction details of Google Pay, PhonePe, Paytm, or BHIM after payment.
-                        </div>
-                      </div>
-
-                      <div className="field" style={{ margin: 0 }}>
-                        <label style={{ fontSize: 13, fontWeight: 800, color: "#14532d", display: "flex", justifyContent: "space-between" }}>
-                          <span>📸 Attach Payment Screenshot (Optional / Faster Verification)</span>
-                          {paymentProof && (
-                            <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>✓ Attached</span>
-                          )}
-                        </label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleProofChange}
-                          style={{
-                            padding: "8px 10px",
-                            border: paymentProof ? "2px solid #22c55e" : "1px dashed #86efac",
-                            background: paymentProof ? "#f0fdf4" : "#faf5ff",
-                            borderRadius: "var(--radius-md)"
-                          }}
-                        />
-
-                        {proofPreview && (
-                          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, background: "#f8fafc", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}>
-                            <img
-                              src={proofPreview}
-                              alt="Payment Proof Preview"
-                              style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #86efac" }}
-                            />
-                            <div style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
-                              {paymentProof?.name}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* 8. Live Cost Summary & Order Submission */}
@@ -1632,11 +1469,11 @@ export default function Order() {
                 <b>{deliveryCost > 0 ? `+₹${deliveryCost}.00` : "FREE (₹0.00)"}</b>
               </div>
 
-              {/* Selected Payment Mode Display */}
+              {/* Payment Gateway Display */}
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: "1px dashed rgba(255,255,255,0.1)" }}>
-                <span style={{ color: "#94a3b8" }}>💳 Payment Mode:</span>
-                <b style={{ color: paymentMethod === "PAY_AT_STORE" ? "#38bdf8" : "#4ade80" }}>
-                  {paymentMethod === "PAY_AT_STORE" ? "🏪 Pay at Store Counter (Cash/Card)" : "📲 Pay Online via UPI"}
+                <span style={{ color: "#94a3b8" }}>💳 Payment Gateway:</span>
+                <b style={{ color: "#38bdf8" }}>
+                  Razorpay (UPI / Cards / NetBanking)
                 </b>
               </div>
             </div>
@@ -1652,7 +1489,7 @@ export default function Order() {
                 disabled={loading || files.length === 0 || (deliveryMode === "DELIVERY" && !isBoisarPincode)}
                 className="btn btn-lg"
                 style={{
-                  background: (deliveryMode === "DELIVERY" && !isBoisarPincode) ? "#64748b" : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  background: (deliveryMode === "DELIVERY" && !isBoisarPincode) ? "#64748b" : "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)",
                   color: "white",
                   padding: "16px 28px",
                   fontSize: 16,
@@ -1662,17 +1499,15 @@ export default function Order() {
                   justifyContent: "center",
                   gap: 10,
                   flex: "1 1 320px",
-                  boxShadow: "0 8px 24px rgba(16, 185, 129, 0.4)",
+                  boxShadow: "0 8px 24px rgba(79, 70, 229, 0.4)",
                   cursor: (deliveryMode === "DELIVERY" && !isBoisarPincode) ? "not-allowed" : "pointer"
                 }}
               >
-                <Zap size={20} />
+                <CreditCard size={20} />
                 <span>
                   {loading 
-                    ? "Confirming Order..." 
-                    : paymentMethod === "PAY_AT_STORE" 
-                      ? "Place Order (Pay at Counter) 🏪" 
-                      : "Confirm & Place Order (Pay via UPI) ⚡"}
+                    ? "Connecting to Razorpay..." 
+                    : `⚡ Pay ₹${totalPrice}.00 via Razorpay & Place Order`}
                 </span>
                 <ArrowRight size={18} />
               </button>

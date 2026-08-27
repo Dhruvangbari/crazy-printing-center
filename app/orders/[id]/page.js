@@ -330,6 +330,51 @@ export default function Detail() {
     }
   }
 
+  function handleRazorpayPayNow() {
+    if (!o) return;
+    setRazorpayLoading(true);
+    initiateRazorpayPayment({
+      order: {
+        id: o.id,
+        order_number: o.order_number,
+        total: o.total,
+        customer_name: o.customer_name || o.profiles?.name || "Customer",
+        customer_phone: o.customer_phone || o.profiles?.phone || "",
+        customer_email: o.profiles?.email || "customer@crazyprinting.com",
+        paper_size: o.paper_size,
+        delivery_mode: o.delivery_mode,
+      },
+      onSuccess: async (paymentId) => {
+        try {
+          const s = supabase();
+          await s.from("orders").update({
+            status: "PAYMENT_VERIFIED",
+            upi_utr: paymentId,
+            payment_proof_path: `razorpay://${paymentId}`,
+            updated_at: new Date().toISOString(),
+          }).eq("id", o.id);
+
+          await s.from("status_history").insert({
+            order_id: o.id,
+            status: "PAYMENT_VERIFIED",
+            message: `💳 Payment of ₹${o.total}.00 verified via Razorpay (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
+          });
+        } catch (e) {}
+
+        setRazorpayLoading(false);
+        playChime("success");
+        setMsg("✅ Payment verified via Razorpay! Your order is queued for printing.");
+        fetchOrder(false);
+      },
+      onFailure: (err) => {
+        setRazorpayLoading(false);
+      },
+      onDismiss: () => {
+        setRazorpayLoading(false);
+      }
+    });
+  }
+
   async function handlePaymentProof(e) {
     e.preventDefault();
     if (!proof) {
@@ -803,167 +848,62 @@ export default function Detail() {
           </div>
         </div>
 
-        {/* Pay at Store Counter Banner */}
-        {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) && !isPaid && (
-          <div className="no-print" style={{ background: "#f0f9ff", border: "2px solid #0284c7", borderRadius: "var(--radius-lg)", padding: "20px 24px", marginBottom: 24, boxShadow: "0 10px 25px -5px rgba(2, 132, 199, 0.15)" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#e0f2fe", color: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Store size={26} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                  <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0369a1", margin: 0 }}>
-                    🏪 Selected: Pay at Store Counter (Cash / UPI upon Pickup)
-                  </h3>
-                  <span style={{ background: "#0284c7", color: "white", fontSize: 11, fontWeight: 900, padding: "2px 8px", borderRadius: 999 }}>
-                    AMOUNT DUE: ₹{o.total}.00
-                  </span>
-                </div>
-                <p style={{ fontSize: 14, color: "#075985", lineHeight: 1.6, margin: "6px 0 12px" }}>
-                  Your order is received and queued! You can pay <b>₹{o.total}.00</b> via <b>Cash, Card, or UPI Standee</b> at our shop counter when collecting your prints (or upon doorstep delivery). <b>No online screenshot upload is required.</b>
-                </p>
-                <div style={{ fontSize: 13, color: "#0369a1", fontWeight: 700 }}>
-                  📍 Store Address: Dhruvang Crazy Printing Center, Boisar, Maharashtra (Opp. Station / Main Market) • Helpline: 📞 8857871669
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Anti-Fraud UPI & Online Payment Box */}
+        {/* Secure Razorpay Online Payment Box */}
         {!isPaid && (
-          <div className="card no-print" style={{ marginBottom: 24 }}>
-            <div className="card-header">
-              <h2 className="card-title">
-                <ShieldCheck size={20} color="var(--primary)" />
-                <span>
-                  {Boolean(o.upi_utr === "PAY_AT_STORE" || o.notes?.includes("PAY_AT_STORE")) 
-                    ? "Fast-Track: Pay Online via UPI (Instant Print Queue)" 
-                    : "Direct UPI Payment & Verification"}
-                </span>
-              </h2>
-              <span className="status-badge status-PAYMENT_SUBMITTED">Amount: ₹{o.total}</span>
+          <div className="card no-print" style={{ marginBottom: 24, border: "1.5px solid #a5b4fc", background: "linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%)" }}>
+            <div className="card-header" style={{ borderBottom: "1px solid #e0e7ff", paddingBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "#4f46e5", color: "white", display: "grid", placeItems: "center" }}>
+                  <CreditCard size={20} />
+                </div>
+                <div>
+                  <h2 className="card-title" style={{ margin: 0, fontSize: 17, color: "#1e1b4b" }}>
+                    Online Payment (Razorpay)
+                  </h2>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                    Instant verification with Google Pay, PhonePe, Paytm, BHIM, Cards &amp; NetBanking
+                  </div>
+                </div>
+              </div>
+              <span className="status-badge status-PAYMENT_SUBMITTED" style={{ fontSize: 13 }}>
+                Amount Due: ₹{o.total}.00
+              </span>
             </div>
 
-            <div className="row" style={{ alignItems: "flex-start", marginTop: 8 }}>
-              {/* QR Code */}
-              <div style={{ textAlign: "center", padding: 16, background: "#f8fafc", borderRadius: "var(--radius-md)", flex: "0 0 220px" }}>
-                <img
-                  src={qrCodeUrl}
-                  alt="UPI QR Code"
-                  style={{ width: 160, height: 160, borderRadius: 8, margin: "0 auto 10px", display: "block" }}
-                />
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-main)", marginBottom: 6 }}>
-                  Scan & Pay ₹{o.total}
+            <div style={{ padding: "16px 0 8px" }}>
+              <p style={{ fontSize: 14, color: "#3730a3", lineHeight: 1.5, margin: "0 0 16px" }}>
+                Complete payment for Order <b>#{o.order_number}</b> via Razorpay to instantly queue your files for laser printing.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleRazorpayPayNow}
+                disabled={razorpayLoading || loading}
+                className="btn btn-lg"
+                style={{
+                  background: "linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)",
+                  color: "white",
+                  padding: "16px 28px",
+                  fontSize: 16,
+                  fontWeight: 900,
+                  width: "100%",
+                  justifyContent: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  boxShadow: "0 8px 24px rgba(79, 70, 229, 0.35)",
+                  cursor: "pointer"
+                }}
+              >
+                <CreditCard size={20} />
+                <span>{razorpayLoading ? "Opening Razorpay..." : `⚡ Pay ₹${o.total}.00 via Razorpay (UPI / Cards)`}</span>
+              </button>
+
+              {msg && (
+                <div className={msg.includes("Error") || msg.includes("Fraud") ? "error" : "success"} style={{ marginTop: 14 }}>
+                  <span>{msg}</span>
                 </div>
-
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "white", padding: "4px 10px", borderRadius: 999, border: "1px solid var(--border)", fontSize: 12 }}>
-                  <span>{shopUpi}</span>
-                  <button
-                    type="button"
-                    onClick={() => copyUpi(shopUpi)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)" }}
-                  >
-                    {copied ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
-                  </button>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-                  Order Ref: <b>{o.order_number}</b>
-                </div>
-              </div>
-
-              {/* Anti-Fraud UTR & Screenshot Verification Form */}
-              <div style={{ flex: 1 }}>
-                <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
-                  Submit Transaction Reference & Screenshot
-                </h4>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.5 }}>
-                  To prevent fraudulent submissions and start printing immediately, please enter your authentic <b>12-digit UPI UTR / Transaction Ref ID</b> from your bank or payment app (Google Pay, PhonePe, Paytm, BHIM) along with your screenshot.
-                </p>
-
-                <form onSubmit={handlePaymentProof}>
-                  <div className="field" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 13, fontWeight: 700 }}>
-                      12-Digit UPI Transaction ID / UTR Number <span style={{ color: "var(--danger)" }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 423456789012"
-                      maxLength={16}
-                      value={utrNumber}
-                      onChange={(e) => setUtrNumber(e.target.value.replace(/[^0-9]/g, ""))}
-                      required
-                      style={{ fontSize: 14, fontFamily: "monospace", letterSpacing: 1 }}
-                    />
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                      Found under transaction details in GPay, PhonePe, Paytm, or BHIM.
-                    </div>
-                  </div>
-
-                  <div className="field" style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 13, fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span>
-                        📸 Payment Screenshot Proof <span style={{ color: "var(--danger)" }}>* (Mandatory)</span>
-                      </span>
-                      {proof && (
-                        <span style={{ color: "#16a34a", fontSize: 11, fontWeight: 700 }}>
-                          ✓ File Selected
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setProof(e.target.files?.[0] || null)}
-                      required
-                      style={{
-                        padding: "8px 10px",
-                        border: proof ? "2px solid #22c55e" : "1px dashed var(--primary)",
-                        background: proof ? "#f0fdf4" : "#faf5ff",
-                        borderRadius: "var(--radius-md)"
-                      }}
-                    />
-
-                    {/* Live Preview Thumbnail of Selected Screenshot */}
-                    {proof && (
-                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, background: "#f8fafc", padding: 8, borderRadius: 8, border: "1px solid var(--border)" }}>
-                        <img
-                          src={URL.createObjectURL(proof)}
-                          alt="Selected Screenshot"
-                          style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }}
-                        />
-                        <div style={{ fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                          <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{proof.name}</div>
-                          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{(proof.size / 1024).toFixed(1)} KB</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading || !proof || utrNumber.length < 8}
-                    className="btn"
-                    style={{
-                      width: "100%",
-                      justifyContent: "center",
-                      fontWeight: 800,
-                      opacity: (!proof || utrNumber.length < 8) ? 0.6 : 1,
-                      cursor: (!proof || utrNumber.length < 8) ? "not-allowed" : "pointer"
-                    }}
-                  >
-                    <UploadCloud size={16} />
-                    <span>{loading ? "Verifying & Submitting..." : "Submit Verified Payment & Screenshot"}</span>
-                  </button>
-                </form>
-
-                {msg && (
-                  <div className={msg.includes("Error") || msg.includes("Fraud") ? "error" : "success"} style={{ marginTop: 12 }}>
-                    {msg.includes("Fraud") && <ShieldAlert size={16} style={{ marginRight: 6 }} />}
-                    <span>{msg}</span>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
         )}
