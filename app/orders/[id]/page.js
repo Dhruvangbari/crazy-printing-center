@@ -34,7 +34,8 @@ import {
   RefreshCw,
   XCircle,
   AlertTriangle,
-  Store
+  Store,
+  Star
 } from "lucide-react";
 import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
@@ -577,7 +578,7 @@ export default function Detail() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <h1 style={{ fontSize: 26, fontWeight: 800 }}>{o.order_number}</h1>
+                <h1 style={{ fontSize: 26, fontWeight: 800 }}>Order #{o.order_number}</h1>
                 {o.priority === "EXPRESS" && (
                   <span className="status-badge" style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a" }}>
                     ⚡ EXPRESS PRIORITY
@@ -606,7 +607,7 @@ export default function Detail() {
                 style={{ background: "#0f172a" }}
               >
                 <Receipt size={15} />
-                <span>View Customer Bill</span>
+                <span>View Tax Invoice / Bill</span>
               </button>
 
               <button
@@ -650,6 +651,74 @@ export default function Detail() {
               <span className={`status-badge status-${o.status}`} style={{ fontSize: 14, padding: "6px 16px" }}>
                 {o.status?.replaceAll("_", " ")}
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 🌟 ENHANCED ORDER RECEIVED CONFIRMATION BANNER */}
+        <div 
+          className="no-print"
+          style={{
+            background: isPaid 
+              ? "linear-gradient(135deg, #065f46 0%, #047857 100%)" 
+              : "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
+            color: "white",
+            borderRadius: "var(--radius-lg)",
+            padding: "20px 24px",
+            marginBottom: 24,
+            boxShadow: "0 10px 30px rgba(6, 95, 70, 0.2)",
+            animation: "fastPopIn 0.3s ease"
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                background: "rgba(255, 255, 255, 0.2)",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0
+              }}>
+                <CheckCircle2 size={26} color="#34d399" />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0, color: "#ffffff" }}>
+                    🎉 Order Received Successfully!
+                  </h3>
+                  <span style={{
+                    background: "rgba(255, 255, 255, 0.25)",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    padding: "2px 8px",
+                    borderRadius: 999
+                  }}>
+                    ID: #{o.order_number}
+                  </span>
+                </div>
+                <p style={{ margin: "4px 0 0", color: "#d1fae5", fontSize: 13.5, lineHeight: 1.5 }}>
+                  Your documents are confirmed and queued for high-speed laser printing at Dhruvang Crazy Printing Center.
+                </p>
+              </div>
+            </div>
+
+            {/* Estimated Ready Time & Payment Status Pill */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.15)", fontSize: 12.5 }}>
+                <div style={{ color: "#a7f3d0", fontWeight: 700 }}>⏱️ Estimated Ready:</div>
+                <div style={{ fontWeight: 900, fontSize: 14, color: "#ffffff" }}>
+                  {o.priority === "EXPRESS" ? "~5-10 Minutes (Express)" : "~15-20 Minutes"}
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "8px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.15)", fontSize: 12.5 }}>
+                <div style={{ color: "#a7f3d0", fontWeight: 700 }}>💳 Payment Status:</div>
+                <div style={{ fontWeight: 900, fontSize: 13.5, color: isPaid ? "#34d399" : "#fbbf24" }}>
+                  {isPaid ? "✅ Verified via Razorpay" : "⏳ Payment Pending"}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -912,6 +981,110 @@ export default function Detail() {
         <div className="no-print" style={{ marginTop: 24 }}>
           <CrazyLiveTimeline order={o} />
         </div>
+
+        {/* 🌟 5-STAR CUSTOMER RATING & REVIEW CARD (When Delivered) */}
+        {o.status === "DELIVERED" && (
+          <div 
+            className="card no-print" 
+            style={{ 
+              marginTop: 24, 
+              border: "1.5px solid #86efac", 
+              background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
+              padding: "24px 28px",
+              borderRadius: "var(--radius-lg)",
+              boxShadow: "0 10px 25px rgba(16, 185, 129, 0.1)"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Star size={22} color="#eab308" fill="#eab308" />
+                  <h3 style={{ fontSize: 18, fontWeight: 900, color: "#166534", margin: 0 }}>
+                    How was your Print Quality &amp; Experience?
+                  </h3>
+                </div>
+                <p style={{ fontSize: 13.5, color: "#15803d", margin: "4px 0 0" }}>
+                  Your feedback helps Dhruvang Crazy Printing Center maintain crisp, high-speed laser printing standards.
+                </p>
+              </div>
+
+              {/* 5 Interactive Stars */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...ratings, [o.id]: { stars: star, ratedAt: new Date().toISOString() } };
+                      setRatings(updated);
+                      try { localStorage.setItem("cpc_customer_ratings", JSON.stringify(updated)); } catch (e) {}
+                      playChime("success");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 4,
+                      transform: (ratings[o.id]?.stars || 5) >= star ? "scale(1.2)" : "scale(1)",
+                      transition: "transform 0.15s ease"
+                    }}
+                    title={`Rate ${star} Star${star > 1 ? "s" : ""}`}
+                  >
+                    <Star
+                      size={28}
+                      color="#eab308"
+                      fill={(ratings[o.id]?.stars || 5) >= star ? "#eab308" : "none"}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Feedback Tags */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+              {[
+                "⚡ Super Fast Printing",
+                "📄 Crisp High-GSM Paper",
+                "🎨 Vibrant Accurate Colors",
+                "🛵 Fast Boisar Delivery",
+                "🤝 Friendly Staff Service",
+                "💰 Best Affordable Pricing"
+              ].map((tag) => (
+                <span
+                  key={tag}
+                  style={{
+                    background: "white",
+                    border: "1px solid #a7f3d0",
+                    color: "#166534",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: 999
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, paddingTop: 10, borderTop: "1px solid #bbf7d0" }}>
+              <div style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>
+                {ratings[o.id] ? `✅ You rated this order ${ratings[o.id].stars} / 5 Stars! Thank you for choosing us.` : "⭐ Click any star above to rate!"}
+              </div>
+
+              <a
+                href="https://g.page/r/dhruvang-printing/review"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-sm"
+                style={{ background: "#16a34a", color: "white", fontWeight: 800, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <Star size={13} fill="white" />
+                <span>Share Review on Google ⭐</span>
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Official Customer Bill / Tax Invoice Modal */}
