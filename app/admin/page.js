@@ -226,9 +226,10 @@ export default function AdminDashboard() {
     // 4. Initial fetch of persistent activity logs
     fetchInitialActivityLogs();
 
-    // 5. Auto-refresh polling backup every 5 seconds
+    // 5. Auto-refresh polling backup every 5 seconds for orders and active telemetry
     const interval = setInterval(() => {
       fetchOrders(true);
+      fetchInitialActivityLogs();
     }, 5000);
 
     return () => {
@@ -566,6 +567,60 @@ export default function AdminDashboard() {
     return result;
   }, [actionLogs, actionFilter, actionSearch]);
 
+  // Combined Hybrid Live Active Users from Realtime Presence + Active Telemetry Logs
+  const activeLiveUsers = useMemo(() => {
+    const userMap = new Map();
+
+    // 1. Add Realtime Presence state users
+    liveUsers.forEach((u) => {
+      const key = u.sessionId || u.presenceKey || "anon";
+      userMap.set(key, {
+        sessionId: u.sessionId || key,
+        name: u.name || "Guest Visitor",
+        phone: u.phone || "",
+        currentPath: u.currentPath || "/",
+        deviceInfo: u.deviceInfo || "Desktop Browser",
+        locality: u.locality || "Boisar, Maharashtra",
+        onlineAt: u.onlineAt || new Date().toISOString(),
+        lastActiveAt: u.lastActiveAt || new Date().toISOString(),
+      });
+    });
+
+    // 2. Add recent visitors from telemetry action logs (active in last 5 minutes)
+    const fiveMinsAgo = Date.now() - 5 * 60 * 1000;
+    actionLogs.forEach((act) => {
+      const actTime = act.timestamp ? new Date(act.timestamp).getTime() : 0;
+      if (actTime >= fiveMinsAgo && act.sessionId) {
+        const key = act.sessionId;
+        const existing = userMap.get(key);
+        if (!existing) {
+          userMap.set(key, {
+            sessionId: act.sessionId,
+            name: act.userName || "Guest Visitor",
+            phone: act.userPhone || "",
+            currentPath: act.pageUrl || "/",
+            deviceInfo: act.deviceInfo || "Browser Device",
+            locality: "Boisar, Maharashtra",
+            onlineAt: act.timestamp || new Date().toISOString(),
+            lastActiveAt: act.timestamp || new Date().toISOString(),
+          });
+        } else {
+          if (act.pageUrl && act.pageUrl !== existing.currentPath) {
+            existing.currentPath = act.pageUrl;
+          }
+          if (act.userName && act.userName !== "Guest Visitor" && act.userName !== "Guest Customer") {
+            existing.name = act.userName;
+          }
+          if (act.userPhone && !existing.phone) {
+            existing.phone = act.userPhone;
+          }
+        }
+      }
+    });
+
+    return Array.from(userMap.values());
+  }, [liveUsers, actionLogs]);
+
   // Order Metrics
   const pendingPaymentCount = useMemo(
     () => orders.filter((o) => o.status === "PAYMENT_SUBMITTED" || o.status === "ORDER_RECEIVED").length,
@@ -643,13 +698,13 @@ export default function AdminDashboard() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              background: liveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
-              color: liveUsers.length > 0 ? "#065f46" : "#64748b",
+              background: activeLiveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
+              color: activeLiveUsers.length > 0 ? "#065f46" : "#64748b",
               padding: "6px 14px",
               borderRadius: 999,
               fontSize: 13,
               fontWeight: 800,
-              border: `1px solid ${liveUsers.length > 0 ? "#a7f3d0" : "var(--border)"}`,
+              border: `1px solid ${activeLiveUsers.length > 0 ? "#a7f3d0" : "var(--border)"}`,
               cursor: "pointer",
               transition: "all 0.2s ease"
             }}
@@ -658,11 +713,11 @@ export default function AdminDashboard() {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: liveUsers.length > 0 ? "#10b981" : "#94a3b8",
-              boxShadow: liveUsers.length > 0 ? "0 0 10px #10b981" : "none",
-              animation: liveUsers.length > 0 ? "pulseGlow 1.5s infinite" : "none"
+              background: activeLiveUsers.length > 0 ? "#10b981" : "#94a3b8",
+              boxShadow: activeLiveUsers.length > 0 ? "0 0 10px #10b981" : "none",
+              animation: activeLiveUsers.length > 0 ? "pulseGlow 1.5s infinite" : "none"
             }} />
-            <span>{liveUsers.length} {liveUsers.length === 1 ? "User" : "Users"} Online Now</span>
+            <span>{activeLiveUsers.length} {activeLiveUsers.length === 1 ? "User" : "Users"} Online Now</span>
           </button>
 
           {/* Sound Toggle */}
@@ -755,8 +810,8 @@ export default function AdminDashboard() {
           <Users size={18} color={adminTab === "live_users" ? "#10b981" : "currentColor"} />
           <span>Live Active Users</span>
           <span style={{
-            background: liveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
-            color: liveUsers.length > 0 ? "#059669" : "var(--text-muted)",
+            background: activeLiveUsers.length > 0 ? "#ecfdf5" : "#f1f5f9",
+            color: activeLiveUsers.length > 0 ? "#059669" : "var(--text-muted)",
             fontSize: 11,
             fontWeight: 900,
             padding: "2px 8px",
@@ -766,7 +821,7 @@ export default function AdminDashboard() {
             gap: 4
           }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-            {liveUsers.length} ONLINE
+            {activeLiveUsers.length} ONLINE
           </span>
         </button>
 
@@ -818,7 +873,7 @@ export default function AdminDashboard() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 12px #10b981" }} />
                   <h2 style={{ fontSize: 18, fontWeight: 900, color: "#065f46", margin: 0 }}>
-                    Real-Time Customer Presence Radar ({liveUsers.length} Active)
+                    Real-Time Customer Presence Radar ({activeLiveUsers.length} Active)
                   </h2>
                 </div>
                 <p style={{ fontSize: 13, color: "#047857", margin: 0 }}>
@@ -829,14 +884,14 @@ export default function AdminDashboard() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-            {liveUsers.length === 0 ? (
+            {activeLiveUsers.length === 0 ? (
               <div className="card" style={{ gridColumn: "1 / -1", textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
                 <Users size={36} color="#94a3b8" style={{ margin: "0 auto 12px" }} />
                 <div style={{ fontWeight: 800, fontSize: 16 }}>No Active Customers Online Right Now</div>
                 <p style={{ fontSize: 13, marginTop: 4 }}>Live presence updates automatically via Supabase Realtime when a visitor arrives.</p>
               </div>
             ) : (
-              liveUsers.map((u, i) => (
+              activeLiveUsers.map((u, i) => (
                 <div
                   key={u.sessionId || i}
                   className="card"

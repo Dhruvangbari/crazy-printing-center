@@ -90,11 +90,30 @@ export default function LiveUserTracker() {
 
     window.addEventListener("cpc:user_action", handleLocalAction);
 
-    // Heartbeat to update presence every 20 seconds
+    // Initial announce ping to telemetry
+    try {
+      const u = getUserDetails();
+      fetch("/api/telemetry/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          actionType: "PAGE_VIEW",
+          actionTitle: `Visitor active on ${window.location.pathname}`,
+          pageUrl: window.location.pathname,
+          deviceInfo,
+          userName: u.name,
+          userPhone: u.phone,
+          timestamp: new Date().toISOString(),
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+
+    // Heartbeat to update presence & persistent active state every 20 seconds
     const interval = setInterval(() => {
       try {
+        const u = getUserDetails();
         if (presenceChannelRef.current && presenceChannelRef.current.state === "joined") {
-          const u = getUserDetails();
           presenceChannelRef.current.track({
             sessionId,
             name: u.name,
@@ -108,6 +127,22 @@ export default function LiveUserTracker() {
             status: window.location.pathname === "/order" ? "Placing Order" : "Active",
           });
         }
+
+        // Also ping telemetry DB so admin sees active users across devices reliably
+        fetch("/api/telemetry/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            actionType: "HEARTBEAT",
+            actionTitle: `Active browsing ${window.location.pathname}`,
+            pageUrl: window.location.pathname,
+            deviceInfo,
+            userName: u.name,
+            userPhone: u.phone,
+            timestamp: new Date().toISOString(),
+          }),
+        }).catch(() => {});
       } catch (err) {}
     }, 20000);
 
