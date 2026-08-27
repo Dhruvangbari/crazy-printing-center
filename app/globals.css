@@ -35,6 +35,203 @@
   --shadow-glow: 0 0 20px rgba(79, 70, 229, 0.25);
 }
 
+/* Swiggy/Blinkit Style E-Commerce Tiles & Steppers */
+.ecom-step-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 15px -3px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+}
+
+.ecom-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ecom-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.ecom-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ecom-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.ecom-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.ecom-tile {
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  background: #ffffff;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  justifyContent: space-between;
+  gap: 8px;
+  user-select: none;
+  position: relative;
+}
+
+.ecom-tile:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.ecom-tile.active {
+  border-color: var(--primary);
+  background: #f5f3ff;
+  box-shadow: 0 0 0 1px var(--primary), 0 8px 16px -4px rgba(79, 70, 229, 0.15);
+}
+
+.ecom-tile-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justifyContent: space-between;
+}
+
+.ecom-tile.active .ecom-tile-title {
+  color: var(--primary);
+}
+
+.ecom-tile-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.ecom-tile-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+/* Stepper Component */
+.stepper-box {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 8px;
+}
+
+.stepper-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text-main);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stepper-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stepper-val {
+  min-width: 32px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 16px;
+}
+
+/* Sticky Bottom Checkout HUD (Swiggy / Zomato Style) */
+.sticky-checkout-hud {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  color: white;
+  padding: 14px 20px;
+  z-index: 999;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.sticky-checkout-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justifyContent: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* Blinkit Style Product / Category Tiles */
+.store-product-tile {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justifyContent: space-between;
+  gap: 14px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.store-product-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 25px -4px rgba(15, 23, 42, 0.1);
+  border-color: #cbd5e1;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

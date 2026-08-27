@@ -140,344 +140,312 @@ export default function Home() {
 
   return (
     <main className="wrap">
-      {/* Elevated Hero Section */}
-      <section className="hero">
-        <div className="hero-content">
+      {/* ======================================================== */}
+      {/* HERO BANNER (SWIGGY / BLINKIT STYLE) */}
+      {/* ======================================================== */}
+      <section className="hero" style={{ padding: "40px 24px", marginBottom: 32, borderRadius: "var(--radius-xl)" }}>
+        <div className="hero-content" style={{ maxWidth: 760 }}>
           <div className="hero-badge">
-            <span className="live-dot" style={{ width: 8, height: 8, borderRadius: "50%", background: "#38bdf8", display: "inline-block", boxShadow: "0 0 10px #38bdf8" }}></span>
-            <span>Laser-Fast Online Xerox & Printing Service</span>
+            <span className="live-dot" style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 10px #10b981" }}></span>
+            <span>⚡ Boisar's #1 Instant Document &amp; Xerox Store</span>
           </div>
 
-          <h1>
-            Print without the queue, <span>delivered to your door.</span>
+          <h1 style={{ fontSize: "clamp(28px, 5vw, 44px)", lineHeight: 1.15, fontWeight: 900, marginBottom: 14 }}>
+            Document printing &amp; xerox, <span>delivered to your door.</span>
           </h1>
 
-          <p>
-            Upload documents in seconds, customize print specifications, pay seamlessly via UPI, and track your print job live from laser printing to zero-wait counter pickup or doorstep delivery.
+          <p style={{ fontSize: 16, color: "#cbd5e1", lineHeight: 1.6, marginBottom: 24 }}>
+            Upload PDFs, notes, or project reports in seconds. Fast laser printing with <b>zero-wait store pickup</b> or <b>15–30 min Boisar doorstep delivery</b>.
           </p>
 
-          <div className="hero-actions">
-            <Link href="/order" className="btn btn-lg">
-              <UploadCloud size={18} />
-              <span>Start Printing Now</span>
+          <div className="hero-actions" style={{ gap: 12 }}>
+            <Link href="/order" className="btn btn-lg" style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", color: "white", padding: "16px 28px", fontSize: 16, fontWeight: 900, boxShadow: "0 10px 25px -5px rgba(16, 185, 129, 0.5)", borderRadius: 12 }}>
+              <UploadCloud size={20} />
+              <span>Start Printing Now ⚡</span>
             </Link>
 
-            <Link href="/track" className="btn btn-secondary btn-lg" style={{ background: "rgba(255,255,255,0.1)", color: "white", borderColor: "rgba(255,255,255,0.2)" }}>
+            <Link href="/track" className="btn btn-secondary btn-lg" style={{ background: "rgba(255,255,255,0.12)", color: "white", borderColor: "rgba(255,255,255,0.25)", padding: "16px 24px", fontSize: 15, fontWeight: 700, borderRadius: 12 }}>
               <Search size={18} />
               <span>Track Order</span>
             </Link>
 
-            <Link href="/customer-service" className="btn btn-secondary btn-lg" style={{ background: "rgba(22, 163, 74, 0.2)", color: "#a7f3d0", borderColor: "rgba(167, 243, 208, 0.3)" }}>
-              <Headphones size={18} />
-              <span>24/7 Helpline</span>
-            </Link>
+            <a
+              href="https://wa.me/918857871669?text=Hello%20Dhruvang%20Crazy%20Printing%2C%20I%20have%20a%20question."
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-lg"
+              style={{ background: "rgba(37, 211, 102, 0.15)", color: "#86efac", borderColor: "rgba(37, 211, 102, 0.3)", padding: "16px 20px", fontSize: 15, fontWeight: 700, borderRadius: 12 }}
+            >
+              <MessageCircle size={18} />
+              <span>WhatsApp Support</span>
+            </a>
           </div>
 
-          {/* Hero Trust Badges Row */}
-          <div className="hero-badges-row">
+          {/* Key Value Propositions */}
+          <div className="hero-badges-row" style={{ marginTop: 24 }}>
             <div className="hero-stat-pill">
               <Zap size={14} color="#facc15" />
-              <span>5-Min Fast Turnaround</span>
+              <span>⚡ 10–30 Min Fast Turnaround</span>
             </div>
             <div className="hero-stat-pill">
-              <ShieldCheck size={14} color="#4ade80" />
-              <span>100% 1200 DPI Quality</span>
+              <Printer size={14} color="#38bdf8" />
+              <span>⬛ B&amp;W @ ₹3 • 🌈 Color @ ₹5</span>
             </div>
             <div className="hero-stat-pill">
-              <CreditCard size={14} color="#38bdf8" />
-              <span>Zero-Fee UPI Instant Pay</span>
+              <Truck size={14} color="#a78bfa" />
+              <span>🚚 Boisar Doorstep Delivery</span>
             </div>
             <div className="hero-stat-pill">
-              <Truck size={14} color="#c084fc" />
-              <span>Doorstep & Store Pickup</span>
+              <CreditCard size={14} color="#4ade80" />
+              <span>📲 Instant UPI or Pay at Store</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Interactive Price Estimator & Why Choose Us */}
-      <div className="row" style={{ marginBottom: 36, alignItems: "stretch" }}>
-        {/* Instant Price Calculator */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      {/* ======================================================== */}
+      {/* 4 QUICK-SELECT PRINT PRESETS (BLINKIT STYLE) */}
+      {/* ======================================================== */}
+      <div style={{ marginBottom: 36 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div className="card-header">
-              <h2 className="card-title">
-                <Sparkles size={20} color="var(--primary)" />
-                <span>Instant Price Calculator</span>
-              </h2>
-              <span className="status-badge status-READY" style={{ background: "#ecfdf5", color: "#16a34a", fontWeight: 800 }}>
-                Transparent Pricing
-              </span>
-            </div>
-
-            <div className="row" style={{ marginBottom: 14 }}>
-              <div className="field">
-                <label>Paper Size</label>
-                <select value={calcSize} onChange={(e) => setCalcSize(e.target.value)}>
-                  <option value="A4">A4 (Standard Document)</option>
-                  <option value="A5">A5 (Booklet / Memo)</option>
-                  <option value="A3">A3 (Poster / Drawing Sheet)</option>
-                  <option value="Legal">Legal (Official Stamp)</option>
-                </select>
-              </div>
-
-              <div className="field">
-                <label>Colour Mode</label>
-                <select value={calcColor} onChange={(e) => setCalcColor(e.target.value)}>
-                  <option value="BW">Black & White (₹3.00/pg)</option>
-                  <option value="COLOR">Full High-Res Colour (₹5.00/pg)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="row" style={{ marginBottom: 14 }}>
-              <div className="field">
-                <label>Print Sides</label>
-                <select value={calcSides} onChange={(e) => setCalcSides(e.target.value)}>
-                  <option value="SINGLE">Single Sided</option>
-                  <option value="DOUBLE">Double Sided (10% Discount)</option>
-                </select>
-              </div>
-
-              <div className="field">
-                <label>Document Pages</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="1000"
-                  value={calcPages}
-                  onChange={(e) => setCalcPages(Math.max(1, parseInt(e.target.value) || 1))}
-                  placeholder="e.g. 10"
-                />
-              </div>
-
-              <div className="field">
-                <label>Number of Copies</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={calcCopies}
-                  onChange={(e) => setCalcCopies(Math.max(1, parseInt(e.target.value) || 1))}
-                />
-              </div>
-            </div>
-
-            {/* Advance WhatsApp Quotation Input Row */}
-            <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "var(--radius-md)", marginTop: 10, border: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <MessageCircle size={14} color="#16a34a" />
-                <span>Instant WhatsApp Advance Bill Delivery</span>
-              </div>
-              <div className="row" style={{ marginBottom: 0 }}>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>Your Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dhruvang Bari"
-                    value={estName}
-                    onChange={(e) => setEstName(e.target.value)}
-                    style={{ fontSize: 13, padding: "8px 10px" }}
-                  />
-                </div>
-                <div className="field" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: 12 }}>WhatsApp Mobile Number <span style={{ color: "var(--danger)" }}>*</span></label>
-                  <div className="phone-input-group" style={{ height: 36 }}>
-                    <div className="phone-prefix-badge" style={{ padding: "0 8px", fontSize: 12 }}>
-                      <span>🇮🇳</span>
-                      <span>+91</span>
-                    </div>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={10}
-                      placeholder="8857871669"
-                      value={estPhone}
-                      onChange={(e) => setEstPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      style={{ fontSize: 13, padding: "6px 10px" }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 16, border: "1px solid var(--border)" }}>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 800, letterSpacing: 0.3 }}>
-                ESTIMATED TOTAL ({calcPages} {calcPages === 1 ? "pg" : "pgs"} × {calcCopies} {calcCopies === 1 ? "copy" : "copies"})
-              </div>
-              <div style={{ fontSize: 30, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={handleSendAdvanceBillWhatsApp}
-                className="btn btn-whatsapp btn-sm"
-                title="Send official advance bill quotation directly to WhatsApp"
-              >
-                <MessageCircle size={15} />
-                <span>Send to WhatsApp</span>
-              </button>
-
-              <Link href="/order" className="btn btn-sm">
-                <span>Upload & Order</span>
-                <ArrowRight size={14} />
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Why Choose Us */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 20 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 900, letterSpacing: -0.3 }}>Why Dhruvang Crazy Printing Center?</h2>
-
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#ecfdf5", color: "#16a34a", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <Printer size={18} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>High-Speed Laser Printing</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Ultra crisp 1200 DPI prints on 75 to 100 GSM premium imported bond paper.</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff", color: "var(--primary)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <CreditCard size={18} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>Instant UPI QR Verification</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Pay with Google Pay, PhonePe, or Paytm with instant payment screenshot check.</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#faf5ff", color: "#9333ea", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <Truck size={18} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>Zero-Wait Counter & Doorstep Pickup</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Grab your finished prints instantly at our counter or get express home delivery.</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#ecfeff", color: "#0891b2", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <Headphones size={18} />
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>Dedicated Support & Helpline</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>Have custom requirements? Call or WhatsApp our helpline directly at <b>8857871669</b>.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Prominent Customer Service & Helpline Callout Banner */}
-      <section className="card" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)", color: "white", padding: "28px 32px", marginBottom: 36, border: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
-          <div style={{ maxWidth: 620 }}>
-            <div className="brand-badge" style={{ background: "rgba(16, 185, 129, 0.2)", color: "#a7f3d0", borderColor: "rgba(167, 243, 208, 0.3)", marginBottom: 10 }}>
-              <Headphones size={13} />
-              <span>Direct Customer Support Desk</span>
-            </div>
-            <h3 style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>
-              Need Assistance with your Print Job or Bill?
-            </h3>
-            <p style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.5 }}>
-              Our customer service team is ready to help you with order status, bill generation, custom booklet bindings, or urgent print requests.
+            <h2 style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.4, margin: 0 }}>
+              Popular Print Services
+            </h2>
+            <p style={{ color: "var(--text-muted)", fontSize: 13.5, margin: "2px 0 0" }}>
+              Tap any category to pre-configure your print order instantly
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <a href="tel:8857871669" className="btn btn-success" style={{ fontWeight: 800 }}>
-              <Phone size={16} />
-              <span>Call Helpline: 8857871669</span>
-            </a>
+          <Link href="/order" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--primary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span>Custom Order</span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
 
-            <Link href="/customer-service" className="btn btn-secondary" style={{ background: "rgba(255,255,255,0.12)", color: "white", borderColor: "rgba(255,255,255,0.25)" }}>
-              <HelpCircle size={16} />
-              <span>Customer Service Hub</span>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+          {/* Preset 1: College Notes & Xerox */}
+          <Link href="/order?preset=notes" className="store-product-tile">
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#eef2ff", color: "var(--primary)", display: "grid", placeItems: "center" }}>
+                  <FileText size={22} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 900, background: "#ecfdf5", color: "#059669", padding: "3px 8px", borderRadius: 999 }}>
+                  MOST POPULAR
+                </span>
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, marginBottom: 4 }}>College Notes &amp; Xerox</h3>
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                B&amp;W double-sided high-speed printing for study materials, assignments, and question papers.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: "var(--text-main)" }}>From ₹3.00 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>/ page</span></span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)" }}>Print Notes →</span>
+            </div>
+          </Link>
+
+          {/* Preset 2: Project Reports & Binding */}
+          <Link href="/order?preset=report" className="store-product-tile">
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fdf4ff", color: "#c026d3", display: "grid", placeItems: "center" }}>
+                  <Layers size={22} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 900, background: "#fdf4ff", color: "#c026d3", padding: "3px 8px", borderRadius: 999 }}>
+                  STUDENT SPECIAL
+                </span>
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, marginBottom: 4 }}>Project Reports &amp; Binding</h3>
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                Full color cover page, premium bond sheets with professional plastic spiral coil binding.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: "var(--text-main)" }}>₹30 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>binding + prints</span></span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)" }}>Order Report →</span>
+            </div>
+          </Link>
+
+          {/* Preset 3: Full Color Presentations */}
+          <Link href="/order?preset=color" className="store-product-tile">
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#ecfeff", color: "#0891b2", display: "grid", placeItems: "center" }}>
+                  <Sparkles size={22} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 900, background: "#ecfeff", color: "#0891b2", padding: "3px 8px", borderRadius: 999 }}>
+                  HD 1200 DPI
+                </span>
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, marginBottom: 4 }}>Full Color Documents</h3>
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                Rich high-resolution color laser prints for business pitch decks, flyers, graphs, and brochures.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: "var(--text-main)" }}>₹5.00 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>/ page</span></span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)" }}>Print Color →</span>
+            </div>
+          </Link>
+
+          {/* Preset 4: Certificates & Photo Glossy */}
+          <Link href="/order?preset=certificate" className="store-product-tile">
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fffbeb", color: "#d97706", display: "grid", placeItems: "center" }}>
+                  <Receipt size={22} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 900, background: "#fffbeb", color: "#d97706", padding: "3px 8px", borderRadius: 999 }}>
+                  GLOSSY FINISH
+                </span>
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 900, marginBottom: 4 }}>Certificates &amp; Photos</h3>
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                Heavyweight 180 GSM glossy finish paper for awards, college degrees, and portfolio artwork.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: "var(--text-main)" }}>From ₹7.50 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>/ page</span></span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)" }}>Print Glossy →</span>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* TRANSPARENT PRICING CARD & QUICK ESTIMATOR */}
+      {/* ======================================================== */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, marginBottom: 36 }}>
+        {/* Simple Price Calculator */}
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 900, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <Sparkles size={18} color="var(--primary)" />
+              <span>Instant Price Calculator</span>
+            </h3>
+            <span style={{ fontSize: 11, fontWeight: 800, background: "#ecfdf5", color: "#059669", padding: "2px 8px", borderRadius: 999 }}>
+              100% TRANSPARENT
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div className="field">
+              <label style={{ fontSize: 12, fontWeight: 700 }}>Paper Size</label>
+              <select value={calcSize} onChange={(e) => setCalcSize(e.target.value)} style={{ padding: "8px 10px", fontSize: 13 }}>
+                <option value="A4">A4 Standard</option>
+                <option value="A3">A3 Large (2×)</option>
+                <option value="Legal">Legal / Stamp</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label style={{ fontSize: 12, fontWeight: 700 }}>Color</label>
+              <select value={calcColor} onChange={(e) => setCalcColor(e.target.value)} style={{ padding: "8px 10px", fontSize: 13 }}>
+                <option value="BW">B&amp;W (₹3/pg)</option>
+                <option value="COLOR">Color (₹5/pg)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div className="field">
+              <label style={{ fontSize: 12, fontWeight: 700 }}>Sides</label>
+              <select value={calcSides} onChange={(e) => setCalcSides(e.target.value)} style={{ padding: "8px 10px", fontSize: 13 }}>
+                <option value="SINGLE">Single</option>
+                <option value="DOUBLE">Double (10% off)</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label style={{ fontSize: 12, fontWeight: 700 }}>Pages</label>
+              <input
+                type="number"
+                min="1"
+                max="1000"
+                value={calcPages}
+                onChange={(e) => setCalcPages(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ padding: "8px 10px", fontSize: 13 }}
+              />
+            </div>
+
+            <div className="field">
+              <label style={{ fontSize: 12, fontWeight: 700 }}>Copies</label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={calcCopies}
+                onChange={(e) => setCalcCopies(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ padding: "8px 10px", fontSize: 13 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 800 }}>ESTIMATED COST</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: "var(--primary)" }}>₹{estPrice}.00</div>
+            </div>
+
+            <Link href="/order" className="btn btn-sm" style={{ fontWeight: 800, padding: "8px 16px" }}>
+              <span>Order Now</span>
+              <ArrowRight size={14} />
             </Link>
           </div>
         </div>
-      </section>
 
-      {/* Feature Highlights Grid */}
-      <div className="grid">
-        <div className="feature-card">
-          <div className="feature-icon">
-            <FileText size={24} />
-          </div>
-          <h3 className="feature-title">Any Document Format</h3>
-          <p className="feature-desc">Upload PDF, Word (DOC/DOCX), PowerPoint (PPT/PPTX), JPG, PNG, and high-res scanned notes.</p>
-        </div>
+        {/* Why People Love Dhruvang Crazy Printing */}
+        <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div>
+            <h3 style={{ fontSize: 18, fontWeight: 900, marginBottom: 14 }}>
+              Why Order from Crazy Printing Center?
+            </h3>
 
-        <div className="feature-card">
-          <div className="feature-icon" style={{ background: "#ede9fe", color: "#6d28d9" }}>
-            <Layers size={24} />
-          </div>
-          <h3 className="feature-title">Multiple Paper Sizes</h3>
-          <p className="feature-desc">Full support for A4, A5, A3, Legal, Letter, glossy photopaper, and custom project prints.</p>
-        </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "#ecfdf5", color: "#16a34a", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <CheckCircle size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5 }}>Zero Wait Times</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Skip shop lines. Order online and pick up ready prints in 5 mins.</div>
+                </div>
+              </div>
 
-        <div className="feature-card">
-          <div className="feature-icon" style={{ background: "var(--warning-bg)", color: "var(--warning)" }}>
-            <CreditCard size={24} />
-          </div>
-          <h3 className="feature-title">Instant UPI Payments</h3>
-          <p className="feature-desc">Scan dynamic QR code on checkout, upload screenshot, and get verified in minutes.</p>
-        </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "#e0f2fe", color: "#0284c7", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <Truck size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5 }}>Boisar 401501 Doorstep Delivery</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Delivered straight to your home, office, or college in 15–30 mins.</div>
+                </div>
+              </div>
 
-        <div className="feature-card">
-          <div className="feature-icon" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
-            <Clock size={24} />
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fef3c7", color: "#d97706", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13.5 }}>Easy UPI or Pay at Store Counter</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Pay via GPay, PhonePe, Paytm, or Cash at store pickup.</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <h3 className="feature-title">Live Status Tracking</h3>
-          <p className="feature-desc">Real-time order tracker from payment received, printing, quality inspection, to pickup ready.</p>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)", marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 700 }}>
+              📍 Boisar Railway Station Road (West)
+            </div>
+            <a href="tel:8857871669" style={{ fontSize: 12, color: "#16a34a", fontWeight: 800, textDecoration: "none" }}>
+              📞 8857871669
+            </a>
+          </div>
         </div>
       </div>
-
-      {/* How it Works 3 Steps */}
-      <section className="card" style={{ padding: 36, textAlign: "center", marginBottom: 20 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8, letterSpacing: -0.3 }}>How It Works in 3 Simple Steps</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 32 }}>Get your documents printed without standing in crowded shop lines</p>
-
-        <div className="row-3" style={{ textAlign: "left" }}>
-          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
-              1
-            </div>
-            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Upload & Customize</h4>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Choose your paper size, color options, single/double sided, and attach your documents.
-            </p>
-          </div>
-
-          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
-              2
-            </div>
-            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Pay with UPI</h4>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Scan the UPI QR code on the payment page and upload your payment screenshot.
-            </p>
-          </div>
-
-          <div style={{ background: "#f8fafc", padding: 22, borderRadius: "var(--radius-md)", border: "1px solid var(--border)" }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--primary)", color: "white", display: "grid", placeItems: "center", fontWeight: 900, marginBottom: 14 }}>
-              3
-            </div>
-            <h4 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Track & Collect</h4>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Follow your order timeline live and pick up your prints or receive them at your doorstep.
-            </p>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
