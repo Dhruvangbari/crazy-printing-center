@@ -59,9 +59,17 @@ export default function CustomerServicePage() {
   ];
 
   function copyHelpline() {
-    navigator.clipboard.writeText("8857871669");
-    setCopiedPhone(true);
-    setTimeout(() => setCopiedPhone(false), 2000);
+    try {
+      if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText("8857871669");
+        setCopiedPhone(true);
+        setTimeout(() => setCopiedPhone(false), 2000);
+      } else {
+        alert("Helpline Number: 8857871669");
+      }
+    } catch (e) {
+      alert("Helpline Number: 8857871669");
+    }
   }
 
   function handleSendSupportWhatsApp(e) {
@@ -177,7 +185,7 @@ export default function CustomerServicePage() {
               WhatsApp: 8857871669
             </div>
             <div style={{ fontSize: 12, color: "#15803d", fontWeight: 700 }}>
-              ⚡ Average response time: &lt; 2 minutes
+              ⚡ Average response time: {"< 2 minutes"}
             </div>
           </div>
 
