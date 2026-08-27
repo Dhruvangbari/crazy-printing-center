@@ -677,15 +677,34 @@ export default function Order() {
               upi_utr: finalUtr,
               payment_proof_path: paymentProofPath,
             }).eq("id", order.id);
-          } catch (e) {}
+          } catch (e) {
+            try {
+              await s.from("orders").update({
+                status: initialStatus,
+                payment_proof_path: paymentProofPath,
+              }).eq("id", order.id);
+            } catch (err2) {}
+          }
         }
       } else {
-        // Fallback to standard insert
-        const { data: fallbackOrder, error: orderErr } = await s
+        // Fallback to standard insert with automatic schema resilience
+        let { data: fallbackOrder, error: orderErr } = await s
           .from("orders")
           .insert(orderPayload)
           .select()
           .single();
+
+        // If upi_utr column is not yet in Supabase schema cache, retry without upi_utr safely
+        if (orderErr && (orderErr.message?.includes("upi_utr") || orderErr.message?.includes("schema cache") || orderErr.code === "PGRST204")) {
+          const { upi_utr, ...safePayload } = orderPayload;
+          const retryRes = await s
+            .from("orders")
+            .insert(safePayload)
+            .select()
+            .single();
+          fallbackOrder = retryRes.data;
+          orderErr = retryRes.error;
+        }
 
         if (orderErr) {
           setErr("Order creation failed: " + orderErr.message);
