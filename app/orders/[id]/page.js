@@ -39,7 +39,7 @@ import OfficialTaxInvoice from "../../../components/OfficialTaxInvoice";
 import CrazyLiveTimeline from "../../../components/CrazyLiveTimeline";
 import { logUserAction } from "../../../lib/telemetry";
 import { playChime } from "../../../lib/webNotifications";
-import { openWhatsAppChat } from "../../../lib/whatsapp";
+import { openWhatsAppChat, buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 
 export default function Detail() {
   const p = useParams();
