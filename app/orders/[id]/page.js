@@ -63,6 +63,7 @@ export default function Detail() {
   const [emailStatus, setEmailStatus] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [ratings, setRatings] = useState({});
   const [cancelReason, setCancelReason] = useState("Uploaded wrong document / Need to change file");
   const [cancelNotes, setCancelNotes] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -251,6 +252,11 @@ export default function Detail() {
   }
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("cpc_customer_ratings");
+      if (saved) setRatings(JSON.parse(saved));
+    } catch (e) {}
+
     if (p?.id) {
       loadOrder();
 
