@@ -558,7 +558,6 @@ export default function Order() {
         subtotal: printCost,
         total: totalPrice,
         status: "ORDER_RECEIVED",
-        upi_utr: isPayAtStore ? "PAY_AT_STORE" : null,
       };
 
       // Parallel concurrent file uploads for lightning-fast speed

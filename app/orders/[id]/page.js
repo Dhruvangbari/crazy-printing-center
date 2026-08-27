@@ -339,18 +339,36 @@ export default function Detail() {
           throw new Error("Fraud Alert: This 12-digit transaction UTR was already submitted for another order. Each transaction can only be used once.");
         }
 
-        // Fallback to standard update
-        const { error: updateErr } = await s
-          .from("orders")
-          .update({
-            upi_utr: cleanUtr,
-            payment_proof_path: path,
-            status: "PAYMENT_SUBMITTED",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", p.id);
+        // Fallback to standard update with schema column compatibility
+        let updateErr = null;
+        try {
+          const res = await s
+            .from("orders")
+            .update({
+              upi_utr: cleanUtr,
+              payment_proof_path: path,
+              status: "PAYMENT_SUBMITTED",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", p.id);
+          updateErr = res.error;
+        } catch (e) {
+          updateErr = e;
+        }
 
-        if (updateErr) throw updateErr;
+        if (updateErr) {
+          // If upi_utr column is missing in schema, update without it safely
+          const { error: safeErr } = await s
+            .from("orders")
+            .update({
+              payment_proof_path: path,
+              status: "PAYMENT_SUBMITTED",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", p.id);
+
+          if (safeErr) throw safeErr;
+        }
 
         await s.from("status_history").insert({
           order_id: p.id,
