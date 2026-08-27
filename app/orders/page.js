@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
@@ -363,7 +363,7 @@ export default function Orders() {
                   const orderRating = ratings[o.id];
 
                   return (
-                    <React.Fragment key={o.id}>
+                    <Fragment key={o.id}>
                       <tr 
                         onClick={() => setExpandedOrderId(isExpanded ? null : o.id)}
                         style={{
@@ -544,7 +544,7 @@ export default function Orders() {
                           </td>
                         </tr>
                       )}
-                    </React.Fragment>
+                    </Fragment>
                   );
                 })}
               </tbody>
