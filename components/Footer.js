@@ -94,13 +94,13 @@ export default function Footer() {
           </div>
 
           <a 
-            href="https://www.google.com/maps/dir/?api=1&destination=19.787653,72.694511"
+            href="https://www.google.com/maps/dir/?api=1&destination=Dhruvang+Crazy+Printing+Center+Boisar+Station+Road+Maharashtra+401501"
             target="_blank"
             rel="noreferrer"
             style={{ fontSize: 11.5, color: "#38bdf8", display: "flex", alignItems: "center", gap: 5, textDecoration: "none", marginTop: 6 }}
           >
             <MapPin size={12} color="#38bdf8" />
-            <span>Store Location: Boisar (19.787653, 72.694511) 📍</span>
+            <span>Store Location: Boisar Station Rd (401501) 📍</span>
           </a>
         </div>
       </div>

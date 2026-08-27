@@ -131,24 +131,22 @@ export default function BoisarDeliveryMap({
       </div>
 
       {/* Visual Interactive Map Canvas */}
-      <div style={{ position: "relative", height: 220, overflow: "hidden", background: "#0b132b" }}>
-        {/* OpenStreetMap Live Interactive Embed for Crazy Print Store Location */}
+      <div style={{ position: "relative", height: 240, overflow: "hidden", background: "#0b132b" }}>
+        {/* Real Live Google Maps Embed for Dhruvang Crazy Print Store Location */}
         <iframe
-          title="Crazy Print Store Location 19.787653, 72.694511 Boisar"
+          title="Dhruvang Crazy Printing Center Boisar Store Location"
           width="100%"
           height="100%"
           frameBorder="0"
           scrolling="no"
           marginHeight="0"
           marginWidth="0"
-          src="https://www.openstreetmap.org/export/embed.html?bbox=72.6600%2C19.7600%2C72.7400%2C19.8200&amp;layer=mapnik&amp;marker=19.787653%2C72.694511"
+          src="https://maps.google.com/maps?q=Dhruvang%20Crazy%20Printing%20Center%20Boisar%20Station%20Road%20Maharashtra%20401501&t=&z=15&ie=UTF8&iwloc=&output=embed"
           style={{
-            filter: "invert(90%) hue-rotate(180deg) brightness(90%) contrast(110%)",
-            opacity: 0.85,
             width: "100%",
             height: "100%",
             border: "none",
-            pointerEvents: "auto"
+            display: "block"
           }}
         />
 
@@ -157,32 +155,32 @@ export default function BoisarDeliveryMap({
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background: "radial-gradient(ellipse at center, transparent 40%, rgba(15, 23, 42, 0.75) 100%)",
+          background: "linear-gradient(to bottom, rgba(15, 23, 42, 0.85) 0%, transparent 40%, rgba(15, 23, 42, 0.9) 100%)",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 12
         }}>
           {/* Top Info Strip */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", pointerEvents: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", pointerEvents: "auto", flexWrap: "wrap", gap: 8 }}>
             <div style={{
               background: "rgba(15, 23, 42, 0.92)",
               backdropFilter: "blur(8px)",
               padding: "6px 12px",
               borderRadius: 8,
               border: "1px solid rgba(255, 255, 255, 0.15)",
-              fontSize: 11,
+              fontSize: 11.5,
               fontWeight: 700,
               display: "flex",
               alignItems: "center",
               gap: 6
             }}>
               <Store size={14} color="#38bdf8" />
-              <span>Shop Hub: <b>Dhruvang Crazy Printing Center</b></span>
+              <span>Shop Hub: <b>Dhruvang Crazy Printing Center (Boisar W)</b></span>
             </div>
 
             <a
-              href="https://www.google.com/maps/dir/?api=1&destination=19.787653,72.694511"
+              href="https://www.google.com/maps/dir/?api=1&destination=Dhruvang+Crazy+Printing+Center+Boisar+Station+Road+Maharashtra+401501"
               target="_blank"
               rel="noreferrer"
               style={{
@@ -190,7 +188,7 @@ export default function BoisarDeliveryMap({
                 color: "white",
                 padding: "6px 12px",
                 borderRadius: 8,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: 800,
                 display: "inline-flex",
                 alignItems: "center",
@@ -201,70 +199,38 @@ export default function BoisarDeliveryMap({
               }}
             >
               <Navigation size={12} />
-              <span>Open in Google Maps 📍</span>
+              <span>Get Directions in Maps 📍</span>
             </a>
           </div>
 
-          {/* Central Shop Pin Marker */}
-          <div style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -100%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            pointerEvents: "none",
-            zIndex: 10
-          }}>
-            <div style={{
-              background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
-              color: "white",
-              padding: "4px 8px",
-              borderRadius: 6,
-              fontSize: 10,
-              fontWeight: 900,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-              marginBottom: 2,
-              whiteSpace: "nowrap",
-              border: "1px solid rgba(255,255,255,0.4)"
-            }}>
-              📍 CRAZY PRINT STORE (19.787653, 72.694511)
-            </div>
-            <div style={{
-              width: 14,
-              height: 14,
-              borderRadius: "50%",
-              background: "#38bdf8",
-              border: "3px solid white",
-              boxShadow: "0 0 10px #38bdf8"
-            }} />
-          </div>
-
           {/* Bottom Live Coordinates Badge */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", pointerEvents: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", pointerEvents: "auto", flexWrap: "wrap", gap: 8 }}>
             <div style={{
-              background: "rgba(15, 23, 42, 0.88)",
+              background: "rgba(15, 23, 42, 0.9)",
               backdropFilter: "blur(6px)",
               padding: "4px 10px",
               borderRadius: 6,
-              fontSize: 10,
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              fontSize: 11,
               color: "#94a3b8",
-              fontFamily: "monospace"
+              display: "flex",
+              alignItems: "center",
+              gap: 6
             }}>
-              📍 19.787653° N, 72.694511° E • Boisar 401501
+              <Compass size={12} color="#10b981" />
+              <span>📍 Boisar Railway Station Road, Boisar (West) - 401501</span>
             </div>
 
             <div style={{
-              background: "rgba(16, 185, 129, 0.9)",
-              color: "white",
+              background: "rgba(16, 185, 129, 0.2)",
+              border: "1px solid #10b981",
+              color: "#34d399",
               padding: "4px 10px",
               borderRadius: 6,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: 0.3
+              fontSize: 11,
+              fontWeight: 800
             }}>
-              ⚡ 100% COVERAGE
+              ⚡ 10-30 Min Doorstep Delivery
             </div>
           </div>
         </div>
