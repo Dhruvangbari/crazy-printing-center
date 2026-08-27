@@ -4,6 +4,7 @@ import Footer from "../components/Footer";
 import WebNotificationListener from "../components/WebNotificationListener";
 import BetaTestingNotice from "../components/BetaTestingNotice";
 import LiveUserTracker from "../components/LiveUserTracker";
+import ChunkErrorHandler from "../components/ChunkErrorHandler";
 
 export const metadata = {
   title: "DHRUVANG CRAZY PRINTING CENTER — Fast Online Document & Xerox Printing",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body suppressHydrationWarning>
+        <ChunkErrorHandler />
         <Navbar />
         {children}
         <Footer />
