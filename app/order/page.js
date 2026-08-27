@@ -40,7 +40,7 @@ import { countDocumentPages } from "../../lib/pageCounter";
 import BoisarDeliveryMap from "../../components/BoisarDeliveryMap";
 import { logUserAction } from "../../lib/telemetry";
 import { playChime } from "../../lib/webNotifications";
-import { initiateRazorpayPayment } from "../../lib/razorpay";
+import CrazyPaymentModal from "../../components/CrazyPaymentModal";
 
 const BINDING_OPTIONS = [
   { id: "NONE", label: "No Binding", desc: "Loose printed sheets", price: 0 },
@@ -153,7 +153,8 @@ export default function Order() {
   const [priority, setPriority] = useState("STANDARD");
   const [paymentMethod, setPaymentMethod] = useState("UPI_ONLINE"); // "UPI_ONLINE" | "PAY_AT_STORE"
 
-  // Upfront UPI Payment States (Pay Before Order)
+  // Customer Payment Modal State (100% Reliable Unified Checkout)
+  const [paymentModalOrder, setPaymentModalOrder] = useState(null);
   const [utrNumber, setUtrNumber] = useState("");
   const [paymentProof, setPaymentProof] = useState(null);
   const [proofPreview, setProofPreview] = useState(null);
@@ -678,67 +679,53 @@ export default function Order() {
       await s.from("status_history").insert({
         order_id: order.id,
         status: "PAYMENT_SUBMITTED",
-        message: `Order #${order.order_number} created for ₹${totalPrice}.00. Initiating Razorpay checkout.`,
+        message: `Order #${order.order_number} created for ₹${totalPrice}.00. Initiating Unified Fast Checkout.`,
       });
 
-      // 2. Launch Razorpay Payment Gateway directly
+      // 2. Launch Unified Payment Modal directly
       setLoading(false);
-
-      initiateRazorpayPayment({
-        order: {
-          id: order.id,
-          order_number: order.order_number,
-          total: totalPrice,
-          customer_name: customerName.trim(),
-          customer_phone: fullPhone,
-          customer_email: currentUser.email,
-          paper_size: paperSize,
-          delivery_mode: deliveryMode,
-        },
-        onSuccess: async (paymentId) => {
-          try {
-            await s.from("orders").update({
-              status: "PAYMENT_VERIFIED",
-              upi_utr: paymentId,
-              payment_proof_path: `razorpay://${paymentId}`,
-              updated_at: new Date().toISOString(),
-            }).eq("id", order.id);
-
-            await s.from("status_history").insert({
-              order_id: order.id,
-              status: "PAYMENT_VERIFIED",
-              message: `💳 Payment of ₹${totalPrice}.00 successfully verified via Razorpay (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
-            });
-          } catch (e) {}
-
-          setOrderSuccess(true);
-          triggerConfetti();
-          playChime("success");
-
-          logUserAction("ORDER_PLACED", `Paid ₹${order.total}.00 via Razorpay (Ref: ${paymentId}) for Order #${order.order_number}`, {
-            orderId: order.id,
-            orderNumber: order.order_number,
-            total: order.total,
-            paymentId: paymentId,
-          });
-
-          setTimeout(() => {
-            router.push(`/orders/${order.id}`);
-          }, 300);
-        },
-        onFailure: (err) => {
-          console.warn("Razorpay payment modal closed/failed:", err);
-          router.push(`/orders/${order.id}`);
-        },
-        onDismiss: () => {
-          router.push(`/orders/${order.id}`);
-        },
+      setPaymentModalOrder({
+        id: order.id,
+        order_number: order.order_number,
+        total: totalPrice,
+        customer_name: customerName.trim(),
+        customer_phone: fullPhone,
+        customer_email: currentUser.email,
+        paper_size: paperSize,
+        delivery_mode: deliveryMode,
       });
 
     } catch (unexpected) {
       setErr(unexpected.message || "An unexpected error occurred.");
       setLoading(false);
     }
+  }
+
+  async function handlePaymentModalSuccess(paymentId) {
+    if (!paymentModalOrder) return;
+    try {
+      const s = supabase();
+      await s.from("orders").update({
+        status: "PAYMENT_VERIFIED",
+        upi_utr: paymentId,
+        payment_proof_path: `razorpay://${paymentId}`,
+        updated_at: new Date().toISOString(),
+      }).eq("id", paymentModalOrder.id);
+
+      await s.from("status_history").insert({
+        order_id: paymentModalOrder.id,
+        status: "PAYMENT_VERIFIED",
+        message: `💳 Payment of ₹${paymentModalOrder.total}.00 verified via Razorpay / Instant UPI (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
+      });
+    } catch (e) {}
+
+    setOrderSuccess(true);
+    triggerConfetti();
+    playChime("success");
+
+    const orderId = paymentModalOrder.id;
+    setPaymentModalOrder(null);
+    router.push(`/orders/${orderId}`);
   }
 
   return (
@@ -1515,6 +1502,20 @@ export default function Order() {
           </div>
         </form>
       </div>
+
+      {/* 100% Reliable Unified Online Payment Gateway Modal */}
+      {paymentModalOrder && (
+        <CrazyPaymentModal
+          order={paymentModalOrder}
+          isOpen={Boolean(paymentModalOrder)}
+          onClose={() => {
+            const id = paymentModalOrder?.id;
+            setPaymentModalOrder(null);
+            if (id) router.push(`/orders/${id}`);
+          }}
+          onPaymentSuccess={handlePaymentModalSuccess}
+        />
+      )}
     </main>
   );
 }

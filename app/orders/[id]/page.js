@@ -43,6 +43,7 @@ import { logUserAction } from "../../../lib/telemetry";
 import { playChime } from "../../../lib/webNotifications";
 import { openWhatsAppChat, buildWhatsAppLink, buildOrderStatusMessage } from "../../../lib/whatsapp";
 import { initiateRazorpayPayment } from "../../../lib/razorpay";
+import CrazyPaymentModal from "../../../components/CrazyPaymentModal";
 
 export default function Detail() {
   const p = useParams();
@@ -61,6 +62,7 @@ export default function Detail() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailStatus, setEmailStatus] = useState("");
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("Uploaded wrong document / Need to change file");
   const [cancelNotes, setCancelNotes] = useState("");
   const [cancelling, setCancelling] = useState(false);
@@ -332,48 +334,31 @@ export default function Detail() {
   }
 
   function handleRazorpayPayNow() {
+    setShowPaymentModal(true);
+  }
+
+  async function handleCrazyPaymentSuccess(paymentId) {
     if (!o) return;
-    setRazorpayLoading(true);
-    initiateRazorpayPayment({
-      order: {
-        id: o.id,
-        order_number: o.order_number,
-        total: o.total,
-        customer_name: o.customer_name || o.profiles?.name || "Customer",
-        customer_phone: o.customer_phone || o.profiles?.phone || "",
-        customer_email: o.profiles?.email || "customer@crazyprinting.com",
-        paper_size: o.paper_size,
-        delivery_mode: o.delivery_mode,
-      },
-      onSuccess: async (paymentId) => {
-        try {
-          const s = supabase();
-          await s.from("orders").update({
-            status: "PAYMENT_VERIFIED",
-            upi_utr: paymentId,
-            payment_proof_path: `razorpay://${paymentId}`,
-            updated_at: new Date().toISOString(),
-          }).eq("id", o.id);
+    try {
+      const s = supabase();
+      await s.from("orders").update({
+        status: "PAYMENT_VERIFIED",
+        upi_utr: paymentId,
+        payment_proof_path: `razorpay://${paymentId}`,
+        updated_at: new Date().toISOString(),
+      }).eq("id", o.id);
 
-          await s.from("status_history").insert({
-            order_id: o.id,
-            status: "PAYMENT_VERIFIED",
-            message: `💳 Payment of ₹${o.total}.00 verified via Razorpay (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
-          });
-        } catch (e) {}
+      await s.from("status_history").insert({
+        order_id: o.id,
+        status: "PAYMENT_VERIFIED",
+        message: `💳 Payment of ₹${o.total}.00 verified via Razorpay / Instant UPI (Ref ID: ${paymentId}). Queued for high-speed laser printing!`,
+      });
+    } catch (e) {}
 
-        setRazorpayLoading(false);
-        playChime("success");
-        setMsg("✅ Payment verified via Razorpay! Your order is queued for printing.");
-        fetchOrder(false);
-      },
-      onFailure: (err) => {
-        setRazorpayLoading(false);
-      },
-      onDismiss: () => {
-        setRazorpayLoading(false);
-      }
-    });
+    setShowPaymentModal(false);
+    playChime("success");
+    setMsg("✅ Payment verified! Your order is queued for printing.");
+    loadOrder(false);
   }
 
   async function handlePaymentProof(e) {
@@ -1433,6 +1418,16 @@ export default function Detail() {
             )}
           </div>
         </div>
+      )}
+
+      {/* 100% Reliable Unified Online Payment Gateway Modal */}
+      {showPaymentModal && o && (
+        <CrazyPaymentModal
+          order={o}
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onPaymentSuccess={handleCrazyPaymentSuccess}
+        />
       )}
     </main>
   );
