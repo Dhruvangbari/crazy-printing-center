@@ -157,7 +157,7 @@ export default function BetaTestingNotice() {
                     }}
                   >
                     <ShieldCheck size={14} color="var(--primary)" />
-                    Tirtesh Bari
+                    Tirthesh Bari
                   </span>
                 </div>
                 <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>
